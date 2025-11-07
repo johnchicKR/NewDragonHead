@@ -19,6 +19,13 @@ public class GameManager : MonoBehaviour
     private Vector2Int startPos;
     private Vector2Int endPos;
 
+    [Header("Dragon Sprites")]
+    [SerializeField] private Sprite _headSprite;
+    [SerializeField] private Sprite _tailSprite;
+
+    private GameObject _headObj;
+    private GameObject _tailObj;
+
     private void Awake()
     {
         Instance = this;
@@ -29,6 +36,21 @@ public class GameManager : MonoBehaviour
         edges = new List<Transform>();
 
         SpawnLevel();
+
+
+        // 머리 오브젝트
+        _headObj = new GameObject("DragonHead");
+        var headSr = _headObj.AddComponent<SpriteRenderer>();
+        headSr.sprite = _headSprite;
+        headSr.sortingOrder = 10; // 셀/엣지 위에 보이게
+        _headObj.SetActive(false);
+
+        // 꼬리 오브젝트
+        _tailObj = new GameObject("DragonTail");
+        var tailSr = _tailObj.AddComponent<SpriteRenderer>();
+        tailSr.sprite = _tailSprite;
+        tailSr.sortingOrder = 9;
+        _tailObj.SetActive(false);
     }
 
     private void SpawnLevel()
@@ -115,6 +137,9 @@ public class GameManager : MonoBehaviour
 
         cells[endPos.x, endPos.y].Add();
         filledPoints.Add(endPos);
+
+        UpdateHeadTail(); // ★ 추가
+
         return true;
     }
 
@@ -126,9 +151,34 @@ public class GameManager : MonoBehaviour
             Vector2Int last = filledPoints[filledPoints.Count - 1];
             cells[last.x, last.y].Remove();
             filledPoints.RemoveAt(filledPoints.Count - 1);
+
+            UpdateHeadTail(); // ★ 추가
+
             return true;
         }
         return false;
+    }
+
+    private void UpdateHeadTail()
+    {
+        if (filledPoints.Count == 0)
+        {
+            _headObj.SetActive(false);
+            _tailObj.SetActive(false);
+            return;
+        }
+
+        // Tail = 첫 번째 채운 칸
+        Vector2Int tailPos = filledPoints[0];
+        Vector3 tailWorld = new Vector3(tailPos.y + 0.5f, tailPos.x + 0.5f, -0.1f);
+        _tailObj.transform.position = tailWorld;
+        _tailObj.SetActive(true);
+
+        // Head = 마지막 칸
+        Vector2Int headPos = filledPoints[filledPoints.Count - 1];
+        Vector3 headWorld = new Vector3(headPos.y + 0.5f, headPos.x + 0.5f, -0.11f);
+        _headObj.transform.position = headWorld;
+        _headObj.SetActive(true);
     }
 
     private void RemoveEdge()
