@@ -7,21 +7,29 @@ public class GameManager : MonoBehaviour
 {
     public static GameManager Instance;
 
+    [Header("Level / Prefabs")]
     [SerializeField] private Level _level;
     [SerializeField] private Cell _cellPrefab;
-    [SerializeField] private Transform _edgePrefab;
+    [SerializeField] private Transform _edgePrefab;   // 직선 몸통 프리팹
 
-    private bool hasGameFinished;
     private Cell[,] cells;
-    private List<Vector2Int> filledPoints;
-    private List<Transform> edges;
+    private List<Vector2Int> filledPoints;            // 지나간 셀 좌표들
+    private List<Transform> edges;                    // 칸-칸 사이 Edge 오브젝트들
 
     private Vector2Int startPos;
     private Vector2Int endPos;
+    private bool hasGameFinished = false;
+
+    // (row, col) 기준 방향 정의
+    private static readonly Vector2Int DIR_UP = new Vector2Int(1, 0);
+    private static readonly Vector2Int DIR_DOWN = new Vector2Int(-1, 0);
+    private static readonly Vector2Int DIR_RIGHT = new Vector2Int(0, 1);
+    private static readonly Vector2Int DIR_LEFT = new Vector2Int(0, -1);
 
     [Header("Dragon Sprites")]
     [SerializeField] private Sprite _headSprite;
     [SerializeField] private Sprite _tailSprite;
+    [SerializeField] private Sprite _bodyStraightSprite;  // Edge에 쓸 직선 스프라이트
 
     private GameObject _headObj;
     private GameObject _tailObj;
@@ -30,50 +38,57 @@ public class GameManager : MonoBehaviour
     {
         Instance = this;
 
-        hasGameFinished = false;
         cells = new Cell[_level.Row, _level.Col];
         filledPoints = new List<Vector2Int>();
         edges = new List<Transform>();
 
         SpawnLevel();
+        CreateHeadAndTail();
+    }
 
+    // ================== 레벨 생성 ==================
 
+    private void SpawnLevel()
+    {
+        // 카메라 위치/사이즈 조정
+        Vector3 camPos = Camera.main.transform.position;
+        camPos.x = _level.Col * 0.5f;
+        camPos.y = _level.Row * 0.5f;
+        Camera.main.transform.position = camPos;
+        Camera.main.orthographicSize = Mathf.Max(_level.Row, _level.Col) + 2f;
+
+        // 셀 생성
+        for (int r = 0; r < _level.Row; r++)
+        {
+            for (int c = 0; c < _level.Col; c++)
+            {
+                Cell cell = Instantiate(_cellPrefab);
+                int data = _level.Data[r * _level.Col + c]; // 0/1
+                cell.Init(data);                           // 여기서 색만 설정
+                cell.transform.position = new Vector3(c + 0.5f, r + 0.5f, 0f);
+                cells[r, c] = cell;
+            }
+        }
+    }
+
+    private void CreateHeadAndTail()
+    {
         // 머리 오브젝트
         _headObj = new GameObject("DragonHead");
         var headSr = _headObj.AddComponent<SpriteRenderer>();
         headSr.sprite = _headSprite;
-        headSr.sortingOrder = 10; // 셀/엣지 위에 보이게
+        headSr.sortingOrder = 30;
         _headObj.SetActive(false);
 
         // 꼬리 오브젝트
         _tailObj = new GameObject("DragonTail");
         var tailSr = _tailObj.AddComponent<SpriteRenderer>();
         tailSr.sprite = _tailSprite;
-        tailSr.sortingOrder = 9;
+        tailSr.sortingOrder = 29;
         _tailObj.SetActive(false);
     }
 
-    private void SpawnLevel()
-    {
-        Vector3 cameraPos = Camera.main.transform.position;
-        cameraPos.x = _level.Col * 0.5f;
-        cameraPos.y = _level.Row * 0.5f;
-        Camera.main.transform.position = cameraPos;
-        Camera.main.orthographicSize = Mathf.Max(_level.Row, _level.Col) + 2f;
-
-        for (int r = 0; r < _level.Row; r++)
-        {
-            for (int c = 0; c < _level.Col; c++)
-            {
-                Cell cell = Instantiate(_cellPrefab);
-                int data = _level.Data[r * _level.Col + c];
-                cell.Init(data);
-                cell.transform.position = new Vector3(c + 0.5f, r + 0.5f, 0f);
-
-                cells[r, c] = cell;
-            }
-        }
-    }
+    // ================== 입력 ==================
 
     private void Update()
     {
@@ -81,45 +96,66 @@ public class GameManager : MonoBehaviour
 
         if (Input.GetMouseButtonDown(0))
         {
-            Vector3 mouseWorld = Camera.main.ScreenToWorldPoint(Input.mousePosition);
-            startPos = new Vector2Int(Mathf.FloorToInt(mouseWorld.y), Mathf.FloorToInt(mouseWorld.x));
-            endPos = startPos;
-
-            if (IsValid(startPos))
-            {
-                AddEmpty();
-            }
+            HandleTouchBegin();
         }
         else if (Input.GetMouseButton(0))
         {
-            Vector3 mouseWorld = Camera.main.ScreenToWorldPoint(Input.mousePosition);
-            endPos = new Vector2Int(Mathf.FloorToInt(mouseWorld.y), Mathf.FloorToInt(mouseWorld.x));
-
-            if (IsNeighbour())
-            {
-                if (AddEmpty())
-                {
-                    CreateEdge();
-                }
-                else if (RemoveFromEnd())
-                {
-                    RemoveEdge();
-                }
-
-                startPos = endPos;
-
-                if (CheckWin())
-                {
-                    hasGameFinished = true;
-                    StartCoroutine(GameFinished());
-                }
-            }
+            HandleTouchDrag();
         }
     }
 
+    private void HandleTouchBegin()
+    {
+        Vector3 mouseWorld = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+        startPos = new Vector2Int(Mathf.FloorToInt(mouseWorld.y), Mathf.FloorToInt(mouseWorld.x));
+        endPos = startPos;
+
+        if (!IsValid(startPos)) return;
+
+        if (AddEmpty())               // 첫 셀 등록
+        {
+            UpdateHeadTail();
+            RefreshCellsPathVisual(); // 코너/몸통 오버레이 갱신
+        }
+    }
+
+    private void HandleTouchDrag()
+    {
+        Vector3 mouseWorld = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+        endPos = new Vector2Int(Mathf.FloorToInt(mouseWorld.y), Mathf.FloorToInt(mouseWorld.x));
+
+        if (!IsNeighbour()) return;
+
+        // 앞으로 전진
+        if (AddEmpty())
+        {
+            CreateEdge();             // 새 구간 직선 Edge
+            UpdateHeadTail();
+            RefreshCellsPathVisual();
+        }
+        // 뒤로 되돌리기
+        else if (RemoveFromEnd())
+        {
+            RemoveEdge();
+            UpdateHeadTail();
+            RefreshCellsPathVisual();
+        }
+
+        startPos = endPos;
+
+        if (CheckWin())
+        {
+            hasGameFinished = true;
+            StartCoroutine(GameFinished());
+        }
+    }
+
+    // ================== 기본 유틸 ==================
+
     private bool IsValid(Vector2Int pos)
     {
-        return pos.x >= 0 && pos.y >= 0 && pos.x < _level.Row && pos.y < _level.Col;
+        return pos.x >= 0 && pos.y >= 0 &&
+               pos.x < _level.Row && pos.y < _level.Col;
     }
 
     private bool IsNeighbour()
@@ -129,35 +165,143 @@ public class GameManager : MonoBehaviour
         return dx + dy == 1;
     }
 
+    // ================== 경로 관리 ==================
+
     private bool AddEmpty()
     {
         if (!IsValid(endPos)) return false;
-        if (cells[endPos.x, endPos.y].Blocked) return false;
+
+        Cell target = cells[endPos.x, endPos.y];
+        if (target.Blocked) return false;
         if (filledPoints.Contains(endPos)) return false;
 
-        cells[endPos.x, endPos.y].Add();
+        target.Add();                 // 색만 FilledColor로 변경
         filledPoints.Add(endPos);
-
-        UpdateHeadTail(); // ★ 추가
-
         return true;
     }
 
     private bool RemoveFromEnd()
     {
         if (filledPoints.Count == 0) return false;
+
+        // 마지막 칸이 endPos일 때만 지움 (뒤로 드래그한 경우)
         if (filledPoints[filledPoints.Count - 1] == endPos)
         {
             Vector2Int last = filledPoints[filledPoints.Count - 1];
-            cells[last.x, last.y].Remove();
+            cells[last.x, last.y].Remove();      // 색을 다시 EmptyColor로
             filledPoints.RemoveAt(filledPoints.Count - 1);
-
-            UpdateHeadTail(); // ★ 추가
-
             return true;
         }
+
         return false;
     }
+
+    // ================== Edge (직선 몸통) ==================
+
+    private void CreateEdge()
+    {
+        int count = filledPoints.Count;
+        if (count < 2) return;
+
+        Vector2Int from = filledPoints[count - 2];
+        Vector2Int to = filledPoints[count - 1];
+        Vector2Int dir = to - from;
+
+        Transform edge = Instantiate(_edgePrefab);
+        edges.Add(edge);
+
+        var sr = edge.GetComponent<SpriteRenderer>();
+        if (_bodyStraightSprite != null)
+            sr.sprite = _bodyStraightSprite;
+
+        // 두 셀 중앙에 위치
+        float midX = from.y * 0.5f + 0.5f + to.y * 0.5f;
+        float midY = from.x * 0.5f + 0.5f + to.x * 0.5f;
+        edge.position = new Vector3(midX, midY, 0f);
+
+        bool horizontal = (dir == DIR_RIGHT || dir == DIR_LEFT);
+        edge.rotation = Quaternion.Euler(0f, 0f, horizontal ? 90f : 0f);
+
+        sr.sortingOrder = 20;
+    }
+
+    private void RemoveEdge()
+    {
+        if (edges.Count == 0) return;
+
+        Transform last = edges[edges.Count - 1];
+        edges.RemoveAt(edges.Count - 1);
+        Destroy(last.gameObject);
+    }
+
+    // ================== 셀 위 코너/직선(오버레이) ==================
+
+    /// <summary>
+    /// filledPoints 기준으로 각 셀의 pathRenderer에
+    /// 직선/코너 스프라이트를 그려준다.
+    /// 기본 점/색(_cellRenderer)은 건드리지 않는다.
+    /// </summary>
+    private void RefreshCellsPathVisual()
+    {
+        // 1) 기존 오버레이 초기화
+        for (int r = 0; r < _level.Row; r++)
+        {
+            for (int c = 0; c < _level.Col; c++)
+            {
+                if (!cells[r, c].Blocked)
+                    cells[r, c].ClearPathVisual();
+            }
+        }
+
+        // 2) 경로 중 "중간 셀"만 검사 (머리/꼬리 제외)
+        for (int i = 0; i < filledPoints.Count; i++)
+        {
+            if (i == 0 || i == filledPoints.Count - 1)
+                continue;
+
+            Vector2Int pos = filledPoints[i];
+            Cell cell = cells[pos.x, pos.y];
+
+            Vector2Int prev = filledPoints[i - 1];
+            Vector2Int next = filledPoints[i + 1];
+
+            Vector2Int dirIn = pos - prev;
+            Vector2Int dirOut = next - pos;
+
+            // 방향이 같으면 직선 → Edge가 이미 있으니 셀은 아무것도 안 함
+            if (dirIn == dirOut)
+            {
+                // 직선 구간: 패스
+                continue;
+            }
+
+            // 방향이 다르면 코너
+            float angle = GetCellCornerAngle(dirIn, dirOut);
+            cell.SetCornerVisual(angle);
+        }
+    }
+
+    /// <summary>
+    /// 코너 셀에 사용할 회전 계산.
+    /// 코너 스프라이트 기본이
+    /// "위(DIR_UP)에서 와서 오른쪽(DIR_RIGHT)으로 꺾이는 ㄱ" 모양이 0도라고 가정.
+    /// </summary>
+    private float GetCellCornerAngle(Vector2Int inDir, Vector2Int outDir)
+    {
+        if (inDir == DIR_UP && outDir == DIR_RIGHT) return 0f;   // ↗
+        if (inDir == DIR_RIGHT && outDir == DIR_DOWN) return 270f; // ↘
+        if (inDir == DIR_DOWN && outDir == DIR_LEFT) return 180f;// ↙
+        if (inDir == DIR_LEFT && outDir == DIR_UP) return 90f;// ↖
+
+        // [2] 반대 순서(오목 쪽으로 꺾이는 경우)는 위 각도에서 180° 반전
+        if (inDir == DIR_RIGHT && outDir == DIR_UP) return 180f; // ↗ 반대
+        if (inDir == DIR_DOWN && outDir == DIR_RIGHT) return 90f; // ↘ 반대
+        if (inDir == DIR_LEFT && outDir == DIR_DOWN) return 0f;   // ↙ 반대
+        if (inDir == DIR_UP && outDir == DIR_LEFT) return 270f;  // ↖ 반대
+        return 0f;
+    }
+
+    // ================== 머리 / 꼬리 ==================
 
     private void UpdateHeadTail()
     {
@@ -168,39 +312,54 @@ public class GameManager : MonoBehaviour
             return;
         }
 
-        // Tail = 첫 번째 채운 칸
-        Vector2Int tailPos = filledPoints[0];
-        Vector3 tailWorld = new Vector3(tailPos.y + 0.5f, tailPos.x + 0.5f, -0.1f);
-        _tailObj.transform.position = tailWorld;
+        Vector2Int tail = filledPoints[0];
+        Vector2Int head = filledPoints[filledPoints.Count - 1];
+
+        _tailObj.transform.position = new Vector3(tail.y + 0.5f, tail.x + 0.5f, -0.1f);
+        _headObj.transform.position = new Vector3(head.y + 0.5f, head.x + 0.5f, -0.11f);
+
         _tailObj.SetActive(true);
-
-        // Head = 마지막 칸
-        Vector2Int headPos = filledPoints[filledPoints.Count - 1];
-        Vector3 headWorld = new Vector3(headPos.y + 0.5f, headPos.x + 0.5f, -0.11f);
-        _headObj.transform.position = headWorld;
         _headObj.SetActive(true);
+
+        if (filledPoints.Count >= 2)
+        {
+            // 꼬리 방향: 두 번째 칸 쪽을 바라봄
+            Vector2Int next = filledPoints[1];
+            Vector2Int dirTail = next - tail;
+            _tailObj.transform.rotation = Quaternion.Euler(0f, 0f, TailDirToAngle(dirTail));
+
+            // 머리 방향: 마지막-1 칸에서 마지막 칸 방향
+            Vector2Int prev = filledPoints[filledPoints.Count - 2];
+            Vector2Int dirHead = head - prev;
+            _headObj.transform.rotation = Quaternion.Euler(0f, 0f, HeadDirToAngle(dirHead));
+        }
+        else
+        {
+            _tailObj.transform.rotation = Quaternion.identity;
+        }
     }
 
-    private void RemoveEdge()
+    private float HeadDirToAngle(Vector2Int dir)
     {
-        if (edges.Count == 0) return;
-        Transform lastEdge = edges[edges.Count - 1];
-        Destroy(lastEdge.gameObject);
-        edges.RemoveAt(edges.Count - 1);
+        // 머리 sprite 기본 방향: 오른쪽(→) 가정
+        if (dir == DIR_RIGHT) return 0f;
+        if (dir == DIR_UP) return 90f;
+        if (dir == DIR_LEFT) return 180f;
+        if (dir == DIR_DOWN) return -90f;
+        return 0f;
     }
 
-    private void CreateEdge()
+    private float TailDirToAngle(Vector2Int dir)
     {
-        Transform edge = Instantiate(_edgePrefab);
-        edges.Add(edge);
-        edge.position = new Vector3(
-            startPos.y * 0.5f + 0.5f + endPos.y * 0.5f,
-            startPos.x * 0.5f + 0.5f + endPos.x * 0.5f,
-            0f
-        );
-        bool horizontal = (endPos.y - startPos.y) != 0;
-        edge.eulerAngles = new Vector3(0, 0, horizontal ? 90f : 0f);
+        // 꼬리 sprite 기본 방향: 위(↑) 가정 (필요하면 숫자만 튜닝)
+        if (dir == DIR_UP) return 90f;
+        if (dir == DIR_RIGHT) return 0f;
+        if (dir == DIR_DOWN) return -90f;
+        if (dir == DIR_LEFT) return 180f;
+        return 0f;
     }
+
+    // ================== 클리어 & 재시작 ==================
 
     private bool CheckWin()
     {

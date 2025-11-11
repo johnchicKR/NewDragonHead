@@ -289,7 +289,8 @@ MonoBehaviour:
   _cellPrefab: {fileID: 5177507590486486883, guid: bc92bf9b01c0ddb4eb9409e6cb408d8c, type: 3}
   _edgePrefab: {fileID: 5447850150516141073, guid: c8c8fa5df81f1e046900d5cbe3942da1, type: 3}
   _headSprite: {fileID: 6943535168657398750, guid: 6f8cd2b6313a34848bb073a088735474, type: 3}
-  _tailSprite: {fileID: -6254662425824378823, guid: 32ba682ecc9c63c4dad9eea1e89f90b7, type: 3}
+  _tailSprite: {fileID: -1334751582527796161, guid: c96aaa16ff41a9c4dadf10ff49395d18, type: 3}
+  _bodyStraightSprite: {fileID: -1880120661550918566, guid: 7facc022a129e1346b5a51ff759109a2, type: 3}
 --- !u!4 &1747978094
 Transform:
   m_ObjectHideFlags: 0
