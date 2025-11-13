@@ -16,6 +16,9 @@ public class Cell : MonoBehaviour
     [SerializeField] private Sprite _pathStraightSprite;       // 직선 몸통 스프라이트
     [SerializeField] private Sprite _pathCornerSprite;         // 코너 스프라이트
 
+    
+    
+
     public void Init(int fill)
     {
         Blocked = (fill == 1);

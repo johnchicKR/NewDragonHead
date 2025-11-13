@@ -8,7 +8,8 @@ public class GameManager : MonoBehaviour
     public static GameManager Instance;
 
     [Header("Level / Prefabs")]
-    [SerializeField] private Level _level;
+    [SerializeField] private Level[] _levels;   // ★ 여러 스테이지 에셋 등록용
+    [SerializeField] private Level _level;     // ★ 실제로 사용할 현재 레벨
     [SerializeField] private Cell _cellPrefab;
     [SerializeField] private Transform _edgePrefab;   // 직선 몸통 프리팹
 
@@ -37,6 +38,23 @@ public class GameManager : MonoBehaviour
     private void Awake()
     {
         Instance = this;
+
+        // ★ 1) 여러 레벨 중 하나 선택
+        if (_levels != null && _levels.Length > 0)
+        {
+            // StageManager.SelectedStageIndex 를 기준으로 선택
+            int idx = Mathf.Clamp(StageManager.SelectedStageIndex, 0, _levels.Length - 1);
+            _level = _levels[idx];
+            //Debug.Log($"GameManager: StageIndex {idx} → Level '{_level.name}' 선택");
+        }
+
+        if (_level == null)
+        {
+            Debug.LogError("GameManager: 사용할 Level이 설정되어 있지 않습니다. Inspector에서 _levels 또는 _level을 확인하세요.");
+            return;
+        }
+
+        // ★ 2) 나머지는 기존 로직 그대로
 
         cells = new Cell[_level.Row, _level.Col];
         filledPoints = new List<Vector2Int>();

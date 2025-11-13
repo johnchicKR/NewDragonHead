@@ -1,87 +1,135 @@
-using System.Collections.Generic;
-using UnityEditor;
+﻿using System.Collections.Generic;
 using UnityEngine;
+
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 public class LevelGenerator : MonoBehaviour
 {
+    [Header("Grid Size")]
+    [SerializeField] private int _row = 5;
+    [SerializeField] private int _col = 5;
 
-    [SerializeField] private int _row;
-    [SerializeField] private int _col;
+    [Header("Data (ScriptableObject)")]
     [SerializeField] private Level _level;
+
+    [Header("Prefabs")]
     [SerializeField] private Cell _cellPrefab;
     [SerializeField] private Transform _edgePrefab;
 
+    // --- Runtime state ---
     private Cell[,] cells;
     private List<Vector2Int> filledPoints;
     private List<Transform> edges;
     private Vector2Int startPos, endPos;
-    private List<Vector2Int> directions = new List<Vector2Int>()
+
+    private bool IsNeighbour()
     {
-        Vector2Int.up, Vector2Int.down,Vector2Int.left,Vector2Int.right
+        return IsValid(startPos) && IsValid(endPos) && directions.Contains(startPos - endPos);
+    }
+
+    private readonly List<Vector2Int> directions = new()
+    {
+        Vector2Int.up, Vector2Int.down, Vector2Int.left, Vector2Int.right
     };
+
+    /// <summary>Editor 전용 접근용: 현재 할당된 Level 에셋</summary>
+    public Level LevelAsset => _level;
 
     private void Awake()
     {
         filledPoints = new List<Vector2Int>();
-        cells = new Cell[_row, _col];
         edges = new List<Transform>();
-        CreateLevel();
-        SpawnLevel();
+
+        // _level이 있으면 그 크기를 신뢰
+        if (_level != null && _level.Row > 0 && _level.Col > 0 &&
+            _level.Data != null && _level.Data.Count == _level.Row * _level.Col)
+        {
+            _row = _level.Row;
+            _col = _level.Col;
+        }
+
+        cells = new Cell[_row, _col];
+
+        CreateLevel();   // _level이 없으면 패스, 있으면 사이즈 보정
+        SpawnLevel();    // 씬에 셀 인스턴스 생성
     }
 
     private void CreateLevel()
     {
-        if (_level.Row == _row && _level.Col == _col) return;
+        if (_level == null) return;
 
-        _level.Row = _row;
-        _level.Col = _col;
-        _level.Data = new List<int>();
-
-        for (int i = 0; i < _row; i++)
+        // 사이즈가 다르거나 데이터가 비어있으면 재구성
+        if (_level.Row != _row || _level.Col != _col ||
+            _level.Data == null || _level.Data.Count != _row * _col)
         {
-            for (int j = 0; j < _col; j++)
-            {
-                _level.Data.Add(0);
-            }
-        }
+            _level.Row = _row;
+            _level.Col = _col;
+            _level.Data = new List<int>(_row * _col);
+            for (int i = 0; i < _row * _col; i++) _level.Data.Add(0);
 
-        EditorUtility.SetDirty(_level);
+#if UNITY_EDITOR
+            EditorUtility.SetDirty(_level);
+#endif
+        }
     }
 
     private void SpawnLevel()
     {
-        Vector3 camPos = Camera.main.transform.position;
-        camPos.x = _level.Col * 0.5f;
-        camPos.y = _level.Row * 0.5f;
-        Camera.main.transform.position = camPos;
-        Camera.main.orthographicSize = Mathf.Max(_level.Row, _level.Col) + 2f;
-
-        for (int i = 0; i < _level.Row; i++)
+        // 카메라 정렬
+        var cam = Camera.main;
+        if (cam != null)
         {
-            for (int j = 0; j < _level.Col; j++)
+            Vector3 camPos = cam.transform.position;
+            camPos.x = _col * 0.5f;
+            camPos.y = _row * 0.5f;
+            cam.transform.position = camPos;
+            cam.orthographicSize = Mathf.Max(_row, _col) + 2f;
+        }
+
+        // 셀 배치
+        for (int r = 0; r < _row; r++)
+        {
+            for (int c = 0; c < _col; c++)
             {
-                cells[i, j] = Instantiate(_cellPrefab);
-                cells[i, j].Init(_level.Data[i * _level.Col + j]);
-                cells[i, j].transform.position = new Vector3(j + 0.5f, i + 0.5f, 0);
+                var cell = Instantiate(_cellPrefab, new Vector3(c + 0.5f, r + 0.5f, 0f), Quaternion.identity, transform);
+                cells[r, c] = cell;
+
+                int v = (_level != null && _level.Data != null && _level.Data.Count == _row * _col)
+                        ? _level.Data[r * _col + c]
+                        : 0;
+                cell.Init(v);
             }
         }
     }
 
     private void Update()
     {
+        // 우클릭: 블록 토글(맵 에디팅)
         if (Input.GetMouseButtonDown(1))
         {
             Vector3 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
             startPos = new Vector2Int(Mathf.FloorToInt(mousePos.y), Mathf.FloorToInt(mousePos.x));
             if (!IsValid(startPos)) return;
-            bool blocked = cells[startPos.x, startPos.y].Blocked;
-            bool filled = cells[startPos.x, startPos.y].Filled;
-            if (!blocked && filled) return;
-            cells[startPos.x, startPos.y].ChangeState();
-            _level.Data[startPos.x * _col + startPos.y] = blocked ? 0 : 1;
-            EditorUtility.SetDirty(_level);
+
+            bool wasBlocked = cells[startPos.x, startPos.y].Blocked;
+            bool wasFilled = cells[startPos.x, startPos.y].Filled;
+            if (!wasBlocked && wasFilled) return;  // 기존 제약 유지
+
+            cells[startPos.x, startPos.y].ChangeState(); // 내부에서 Blocked 토글
+
+            if (_level != null && _level.Data != null && _level.Data.Count == _row * _col)
+            {
+                // 토글 결과 반영 (wasBlocked의 반대가 현재 상태)
+                _level.Data[startPos.x * _col + startPos.y] = wasBlocked ? 0 : 1;
+#if UNITY_EDITOR
+                EditorUtility.SetDirty(_level);
+#endif
+            }
         }
 
+        // 좌클릭 드래그: 경로 그리기(기존 로직 그대로)
         if (Input.GetMouseButtonDown(0))
         {
             Vector3 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
@@ -101,43 +149,46 @@ public class LevelGenerator : MonoBehaviour
                 filledPoints.Add(endPos);
                 cells[startPos.x, startPos.y].Add();
                 cells[endPos.x, endPos.y].Add();
-                Transform edge = Instantiate(_edgePrefab);
+
+                Transform edge = Instantiate(_edgePrefab, transform);
                 edges.Add(edge);
-                edge.transform.position = new Vector3(
+                edge.position = new Vector3(
                     startPos.y * 0.5f + 0.5f + endPos.y * 0.5f,
                     startPos.x * 0.5f + 0.5f + endPos.x * 0.5f,
                     0f
-                    );
-                bool horizontal = (endPos.y - startPos.y) < 0 || (endPos.y - startPos.y) > 0;
-                edge.transform.eulerAngles = new Vector3(0, 0, horizontal ? 90f : 0);
+                );
+                bool horizontal = (endPos.y - startPos.y) != 0;
+                edge.eulerAngles = new Vector3(0, 0, horizontal ? 90f : 0);
             }
             else if (AddToEnd())
             {
                 filledPoints.Add(endPos);
                 cells[endPos.x, endPos.y].Add();
-                Transform edge = Instantiate(_edgePrefab);
+
+                Transform edge = Instantiate(_edgePrefab, transform);
                 edges.Add(edge);
-                edge.transform.position = new Vector3(
+                edge.position = new Vector3(
                     startPos.y * 0.5f + 0.5f + endPos.y * 0.5f,
                     startPos.x * 0.5f + 0.5f + endPos.x * 0.5f,
                     0f
-                    );
-                bool horizontal = (endPos.y - startPos.y) < 0 || (endPos.y - startPos.y) > 0;
-                edge.transform.eulerAngles = new Vector3(0, 0, horizontal ? 90f : 0);
+                );
+                bool horizontal = (endPos.y - startPos.y) != 0;
+                edge.eulerAngles = new Vector3(0, 0, horizontal ? 90f : 0);
             }
             else if (AddToStart())
             {
                 filledPoints.Insert(0, endPos);
                 cells[endPos.x, endPos.y].Add();
-                Transform edge = Instantiate(_edgePrefab);
+
+                Transform edge = Instantiate(_edgePrefab, transform);
                 edges.Insert(0, edge);
-                edge.transform.position = new Vector3(
+                edge.position = new Vector3(
                     startPos.y * 0.5f + 0.5f + endPos.y * 0.5f,
                     startPos.x * 0.5f + 0.5f + endPos.x * 0.5f,
                     0f
-                    );
-                bool horizontal = (endPos.y - startPos.y) < 0 || (endPos.y - startPos.y) > 0;
-                edge.transform.eulerAngles = new Vector3(0, 0, horizontal ? 90f : 0);
+                );
+                bool horizontal = (endPos.y - startPos.y) != 0;
+                edge.eulerAngles = new Vector3(0, 0, horizontal ? 90f : 0);
             }
             else if (RemoveFromEnd())
             {
@@ -161,6 +212,7 @@ public class LevelGenerator : MonoBehaviour
         }
     }
 
+    // ----- Helpers -----
     private bool AddEmpty()
     {
         if (edges.Count > 0) return false;
@@ -200,6 +252,7 @@ public class LevelGenerator : MonoBehaviour
         if (cells[endPos.x, endPos.y] != lastCell) return false;
         return true;
     }
+
     private bool RemoveFromStart()
     {
         if (filledPoints.Count < 2) return false;
@@ -219,13 +272,179 @@ public class LevelGenerator : MonoBehaviour
         filledPoints.RemoveAt(0);
     }
 
-    private bool IsNeighbour()
+    public bool IsValid(Vector2Int pos)   // ← Editor에서도 쓰니까 public로
     {
-        return IsValid(startPos) && IsValid(endPos) && directions.Contains(startPos - endPos);
-    }
-
-    private bool IsValid(Vector2Int pos)
-    {
+        if (_level == null) return false;
         return pos.x >= 0 && pos.y >= 0 && pos.x < _level.Row && pos.y < _level.Col;
     }
+
+    // ====== Editor Utilities ======
+#if UNITY_EDITOR
+
+    [ContextMenu("Save (Overwrite)")]
+    public void SaveOverwrite()
+    {
+        if (_level == null)
+        {
+            Debug.LogWarning("Level 에셋이 비어있습니다. 'Save As New...'를 사용하세요.");
+            return;
+        }
+        SyncGridToLevel(_level);
+        EditorUtility.SetDirty(_level);
+        AssetDatabase.SaveAssets();
+        Debug.Log($"Saved: {_level.name}");
+    }
+
+    [ContextMenu("Save As New...")]
+    public void SaveAsNew()
+    {
+        string path = EditorUtility.SaveFilePanelInProject(
+            "Save Level As", "Level_New", "asset",
+            "저장 위치를 선택하세요 (예: Assets/Levels/Stage_01.asset)",
+            "Assets/Levels"
+        );
+        if (string.IsNullOrEmpty(path)) return;
+
+        var newLevel = ScriptableObject.CreateInstance<Level>();
+        newLevel.Row = _row;
+        newLevel.Col = _col;
+        newLevel.Data = CaptureGridData();
+
+        AssetDatabase.CreateAsset(newLevel, path);
+        AssetDatabase.SaveAssets();
+
+        Selection.activeObject = newLevel;
+        _level = newLevel;
+
+        Debug.Log($"Created: {path}");
+    }
+
+    [ContextMenu("Load From Assigned Level")]
+    public void LoadFromAssignedLevel()
+    {
+        if (_level == null) { Debug.LogWarning("Level 에셋을 먼저 할당하세요."); return; }
+
+        _row = _level.Row; _col = _level.Col;
+
+        // 기존 셀 제거
+        if (cells != null)
+        {
+            foreach (var cell in cells)
+                if (cell != null) DestroyImmediate(cell.gameObject);
+        }
+
+        cells = new Cell[_row, _col];
+        SpawnLevel();  // _level.Data로 Init
+        Debug.Log($"Loaded: {_level.name}");
+    }
+
+    [ContextMenu("Spawn Level (Editor Mode)")]
+    public void SpawnLevelInEditor()
+    {
+        // 기존 셀 제거
+        if (cells != null)
+        {
+            foreach (var c in cells)
+                if (c != null) DestroyImmediate(c.gameObject);
+        }
+
+        cells = new Cell[_row, _col];
+
+        for (int r = 0; r < _row; r++)
+        {
+            for (int c = 0; c < _col; c++)
+            {
+                var cell = PrefabUtility.InstantiatePrefab(_cellPrefab, transform) as Cell;
+                cell.Init((_level != null && _level.Data != null && _level.Data.Count == _row * _col)
+                          ? _level.Data[r * _col + c]
+                          : 0);
+                cell.transform.position = new Vector3(c + 0.5f, r + 0.5f, 0f);
+                cells[r, c] = cell;
+            }
+        }
+
+        var cam = Camera.main;
+        if (cam != null)
+        {
+            cam.transform.position = new Vector3(_col / 2f, _row / 2f, -10f);
+            cam.orthographicSize = Mathf.Max(_row, _col) + 2f;
+        }
+
+        Debug.Log("✅ 에디터 모드에서 셀 생성 완료!");
+    }
+
+    // --- Inspector 없이 Scene 뷰에서 좌클릭으로 토글 ---
+    [CustomEditor(typeof(LevelGenerator))]
+    public class LevelGeneratorEditor : Editor
+    {
+        private LevelGenerator generator;
+
+        private void OnEnable()
+        {
+            generator = (LevelGenerator)target;
+            SceneView.duringSceneGui += OnSceneGUIHandler;
+        }
+
+        private void OnDisable()
+        {
+            SceneView.duringSceneGui -= OnSceneGUIHandler;
+        }
+
+        private void OnSceneGUIHandler(SceneView sceneView)
+        {
+            Event e = Event.current;
+            if (e.type == EventType.MouseDown && e.button == 0)
+            {
+                Vector3 world = HandleUtility.GUIPointToWorldRay(e.mousePosition).origin;
+                var gridPos = new Vector2Int(Mathf.FloorToInt(world.y), Mathf.FloorToInt(world.x));
+
+                if (!generator.IsValid(gridPos)) return;
+
+                var cell = generator.GetCell(gridPos);
+                if (cell != null)
+                {
+                    Undo.RecordObject(cell, "Toggle Cell");
+                    cell.ChangeState();
+                    generator.UpdateLevelData(gridPos, cell.Blocked ? 1 : 0);
+                    EditorUtility.SetDirty(cell);
+                    if (generator.LevelAsset != null) EditorUtility.SetDirty(generator.LevelAsset);
+                }
+
+                e.Use();
+            }
+        }
+    }
+
+    // Editor에서 쓰는 Helper
+    public Cell GetCell(Vector2Int pos)
+    {
+        if (!IsValid(pos)) return null;
+        return cells[pos.x, pos.y];
+    }
+
+    public void UpdateLevelData(Vector2Int pos, int value)
+    {
+        if (_level == null) return;
+        if (!IsValid(pos)) return;
+        if (_level.Data == null) _level.Data = new List<int>(_row * _col);
+        _level.Data[pos.x * _col + pos.y] = value;
+    }
+
+    private void SyncGridToLevel(Level target)
+    {
+        target.Row = _row;
+        target.Col = _col;
+        target.Data = CaptureGridData();
+    }
+
+    private List<int> CaptureGridData()
+    {
+        var list = new List<int>(_row * _col);
+        for (int r = 0; r < _row; r++)
+            for (int c = 0; c < _col; c++)
+                list.Add(cells[r, c] != null && cells[r, c].Blocked ? 1 : 0);
+        return list;
+    }
+
+#endif
 }
