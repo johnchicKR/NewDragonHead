@@ -1,4 +1,4 @@
-using System.Collections;
+ï»¿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -8,20 +8,20 @@ public class GameManager : MonoBehaviour
     public static GameManager Instance;
 
     [Header("Level / Prefabs")]
-    [SerializeField] private Level[] _levels;   // ¡Ú ¿©·¯ ½ºÅ×ÀÌÁö ¿¡¼Â µî·Ï¿ë
-    [SerializeField] private Level _level;     // ¡Ú ½ÇÁ¦·Î »ç¿ëÇÒ ÇöÀç ·¹º§
+    [SerializeField] private Level[] _levels;   // â˜… ì—¬ëŸ¬ ìŠ¤í…Œì´ì§€ ì—ì…‹ ë“±ë¡ìš©
+    [SerializeField] private Level _level;     // â˜… ì‹¤ì œë¡œ ì‚¬ìš©í•  í˜„ì¬ ë ˆë²¨
     [SerializeField] private Cell _cellPrefab;
-    [SerializeField] private Transform _edgePrefab;   // Á÷¼± ¸öÅë ÇÁ¸®ÆÕ
+    [SerializeField] private Transform _edgePrefab;   // ì§ì„  ëª¸í†µ í”„ë¦¬íŒ¹
 
     private Cell[,] cells;
-    private List<Vector2Int> filledPoints;            // Áö³ª°£ ¼¿ ÁÂÇ¥µé
-    private List<Transform> edges;                    // Ä­-Ä­ »çÀÌ Edge ¿ÀºêÁ§Æ®µé
+    private List<Vector2Int> filledPoints;            // ì§€ë‚˜ê°„ ì…€ ì¢Œí‘œë“¤
+    private List<Transform> edges;                    // ì¹¸-ì¹¸ ì‚¬ì´ Edge ì˜¤ë¸Œì íŠ¸ë“¤
 
     private Vector2Int startPos;
     private Vector2Int endPos;
     private bool hasGameFinished = false;
 
-    // (row, col) ±âÁØ ¹æÇâ Á¤ÀÇ
+    // (row, col) ê¸°ì¤€ ë°©í–¥ ì •ì˜
     private static readonly Vector2Int DIR_UP = new Vector2Int(1, 0);
     private static readonly Vector2Int DIR_DOWN = new Vector2Int(-1, 0);
     private static readonly Vector2Int DIR_RIGHT = new Vector2Int(0, 1);
@@ -30,7 +30,10 @@ public class GameManager : MonoBehaviour
     [Header("Dragon Sprites")]
     [SerializeField] private Sprite _headSprite;
     [SerializeField] private Sprite _tailSprite;
-    [SerializeField] private Sprite _bodyStraightSprite;  // Edge¿¡ ¾µ Á÷¼± ½ºÇÁ¶óÀÌÆ®
+    [SerializeField] private Sprite _bodyStraightSprite;  // Edgeì— ì“¸ ì§ì„  ìŠ¤í”„ë¼ì´íŠ¸
+
+    [Header("UI")]
+    [SerializeField] private GameplayUI _gameplayUI;
 
     private GameObject _headObj;
     private GameObject _tailObj;
@@ -39,22 +42,22 @@ public class GameManager : MonoBehaviour
     {
         Instance = this;
 
-        // ¡Ú 1) ¿©·¯ ·¹º§ Áß ÇÏ³ª ¼±ÅÃ
+        // â˜… 1) ì—¬ëŸ¬ ë ˆë²¨ ì¤‘ í•˜ë‚˜ ì„ íƒ
         if (_levels != null && _levels.Length > 0)
         {
-            // StageManager.SelectedStageIndex ¸¦ ±âÁØÀ¸·Î ¼±ÅÃ
+            // StageManager.SelectedStageIndex ë¥¼ ê¸°ì¤€ìœ¼ë¡œ ì„ íƒ
             int idx = Mathf.Clamp(StageManager.SelectedStageIndex, 0, _levels.Length - 1);
             _level = _levels[idx];
-            //Debug.Log($"GameManager: StageIndex {idx} ¡æ Level '{_level.name}' ¼±ÅÃ");
+            //Debug.Log($"GameManager: StageIndex {idx} â†’ Level '{_level.name}' ì„ íƒ");
         }
 
         if (_level == null)
         {
-            Debug.LogError("GameManager: »ç¿ëÇÒ LevelÀÌ ¼³Á¤µÇ¾î ÀÖÁö ¾Ê½À´Ï´Ù. Inspector¿¡¼­ _levels ¶Ç´Â _levelÀ» È®ÀÎÇÏ¼¼¿ä.");
+            Debug.LogError("GameManager: ì‚¬ìš©í•  Levelì´ ì„¤ì •ë˜ì–´ ìˆì§€ ì•ŠìŠµë‹ˆë‹¤. Inspectorì—ì„œ _levels ë˜ëŠ” _levelì„ í™•ì¸í•˜ì„¸ìš”.");
             return;
         }
 
-        // ¡Ú 2) ³ª¸ÓÁö´Â ±âÁ¸ ·ÎÁ÷ ±×´ë·Î
+        // â˜… 2) ë‚˜ë¨¸ì§€ëŠ” ê¸°ì¡´ ë¡œì§ ê·¸ëŒ€ë¡œ
 
         cells = new Cell[_level.Row, _level.Col];
         filledPoints = new List<Vector2Int>();
@@ -64,25 +67,25 @@ public class GameManager : MonoBehaviour
         CreateHeadAndTail();
     }
 
-    // ================== ·¹º§ »ı¼º ==================
+    // ================== ë ˆë²¨ ìƒì„± ==================
 
     private void SpawnLevel()
     {
-        // Ä«¸Ş¶ó À§Ä¡/»çÀÌÁî Á¶Á¤
+        // ì¹´ë©”ë¼ ìœ„ì¹˜/ì‚¬ì´ì¦ˆ ì¡°ì •
         Vector3 camPos = Camera.main.transform.position;
         camPos.x = _level.Col * 0.5f;
         camPos.y = _level.Row * 0.5f;
         Camera.main.transform.position = camPos;
         Camera.main.orthographicSize = Mathf.Max(_level.Row, _level.Col) + 2f;
 
-        // ¼¿ »ı¼º
+        // ì…€ ìƒì„±
         for (int r = 0; r < _level.Row; r++)
         {
             for (int c = 0; c < _level.Col; c++)
             {
                 Cell cell = Instantiate(_cellPrefab);
                 int data = _level.Data[r * _level.Col + c]; // 0/1
-                cell.Init(data);                           // ¿©±â¼­ »ö¸¸ ¼³Á¤
+                cell.Init(data);                           // ì—¬ê¸°ì„œ ìƒ‰ë§Œ ì„¤ì •
                 cell.transform.position = new Vector3(c + 0.5f, r + 0.5f, 0f);
                 cells[r, c] = cell;
             }
@@ -91,14 +94,14 @@ public class GameManager : MonoBehaviour
 
     private void CreateHeadAndTail()
     {
-        // ¸Ó¸® ¿ÀºêÁ§Æ®
+        // ë¨¸ë¦¬ ì˜¤ë¸Œì íŠ¸
         _headObj = new GameObject("DragonHead");
         var headSr = _headObj.AddComponent<SpriteRenderer>();
         headSr.sprite = _headSprite;
         headSr.sortingOrder = 30;
         _headObj.SetActive(false);
 
-        // ²¿¸® ¿ÀºêÁ§Æ®
+        // ê¼¬ë¦¬ ì˜¤ë¸Œì íŠ¸
         _tailObj = new GameObject("DragonTail");
         var tailSr = _tailObj.AddComponent<SpriteRenderer>();
         tailSr.sprite = _tailSprite;
@@ -106,7 +109,7 @@ public class GameManager : MonoBehaviour
         _tailObj.SetActive(false);
     }
 
-    // ================== ÀÔ·Â ==================
+    // ================== ì…ë ¥ ==================
 
     private void Update()
     {
@@ -130,10 +133,23 @@ public class GameManager : MonoBehaviour
 
         if (!IsValid(startPos)) return;
 
-        if (AddEmpty())               // Ã¹ ¼¿ µî·Ï
+        // ì´ë¯¸ ê²½ë¡œê°€ ê·¸ë ¤ì ¸ ìˆëŠ” ìƒíƒœë¼ë©´
+        if (filledPoints.Count > 0)
+        {
+            // í˜„ì¬ ë¨¸ë¦¬ ìœ„ì¹˜
+            Vector2Int head = filledPoints[filledPoints.Count - 1];
+
+            // ë¨¸ë¦¬ ì¹¸ì´ ì•„ë‹Œ ë‹¤ë¥¸ ì¹¸ì—ì„œ ìƒˆë¡œ ë“œë˜ê·¸ë¥¼ ì‹œì‘í–ˆë‹¤ë©´ â†’ "ìƒˆë¡œ ì‹œì‘"ìœ¼ë¡œ íŒë‹¨í•˜ê³  ë¦¬ì…‹
+            if (startPos != head)
+            {
+                ResetPath();
+            }
+        }
+
+        if (AddEmpty())               // ì²« ì…€ ë“±ë¡
         {
             UpdateHeadTail();
-            RefreshCellsPathVisual(); // ÄÚ³Ê/¸öÅë ¿À¹ö·¹ÀÌ °»½Å
+            RefreshCellsPathVisual(); // ì½”ë„ˆ/ëª¸í†µ ì˜¤ë²„ë ˆì´ ê°±ì‹ 
         }
     }
 
@@ -142,33 +158,66 @@ public class GameManager : MonoBehaviour
         Vector3 mouseWorld = Camera.main.ScreenToWorldPoint(Input.mousePosition);
         endPos = new Vector2Int(Mathf.FloorToInt(mouseWorld.y), Mathf.FloorToInt(mouseWorld.x));
 
-        if (!IsNeighbour()) return;
+        // 0) ë³´ë“œ ë°–(ì— í‹° ê³µê°„) â†’ ê·¸ëƒ¥ ë¬´ì‹œ (ë¦¬ì…‹ X)
+        if (!IsValid(endPos))
+            return;
 
-        // ¾ÕÀ¸·Î ÀüÁø
-        if (AddEmpty())
+        // 1) ì²« ì¶œë°œì¹¸(ê¼¬ë¦¬)ë¡œ ë˜ëŒì•„ì˜¨ ê²½ìš° â†’ í´ë¦¬ì–´ ì²´í¬
+        if (filledPoints.Count > 0 && endPos == filledPoints[0])
         {
-            CreateEdge();             // »õ ±¸°£ Á÷¼± Edge
+            // ì—¬ê¸°ì„œëŠ” ìƒˆ ì¹¸ ì¶”ê°€ ì—†ì´, í˜„ì¬ ê²½ë¡œ ìƒíƒœë¡œ ìŠ¹ë¦¬ ì¡°ê±´ë§Œ ê²€ì‚¬
+            if (CheckWin())
+            {
+                hasGameFinished = true;
+                StartCoroutine(GameFinished());   // ì—¬ê¸°ì„œ í´ë¦¬ì–´ íŒ¨ë„ ëœ¨ëŠ” ì½”ë£¨í‹´
+            }
+            return;    // ì´ í”„ë ˆì„ì—ì„œëŠ” ë” ì´ìƒ ì²˜ë¦¬ ì•ˆ í•¨
+        }
+
+        // 2) ì´ì›ƒì¹¸ì´ ì•„ë‹Œë°, ë‹¤ë¥¸ ì¹¸ìœ¼ë¡œ íŠ„ ê²½ìš° â†’ ì‹¤ìˆ˜ í„°ì¹˜ë¡œ íŒë‹¨í•˜ê³  ë¦¬ì…‹
+        if (!IsNeighbour())
+        {
+            // ê°™ì€ ì¹¸ ìœ„ì—ì„œ ì†ê°€ë½ë§Œ ì‚´ì§ í”ë“¤ë¦¬ëŠ” ìƒí™©ì€ ì œì™¸
+            if (endPos != startPos && filledPoints.Count > 0)
+            {
+                ResetPath();
+            }
+            return;
+        }
+
+        // 3) ì •ìƒ ì´ì›ƒì¹¸ìœ¼ë¡œ ì´ë™ ì‹œë„
+        bool movedForward = AddEmpty();
+
+        if (movedForward)
+        {
+            // ì•ìœ¼ë¡œ í•œ ì¹¸ ì „ì§„ ì •ìƒ ì²˜ë¦¬
+            CreateEdge();
             UpdateHeadTail();
             RefreshCellsPathVisual();
         }
-        // µÚ·Î µÇµ¹¸®±â
         else if (RemoveFromEnd())
         {
+            // ë˜ëŒì•„ê°€ê¸°(Undo) ì²˜ë¦¬
             RemoveEdge();
             UpdateHeadTail();
             RefreshCellsPathVisual();
         }
+        else
+        {
+            // ì´ì›ƒì´ê¸´ í•œë°,
+            // - Blocked ì¹¸ì´ê±°ë‚˜
+            // - ì´ë¯¸ ì§€ë‚˜ê°„ ëª¸í†µ(ë˜ëŒë¦¬ê¸°ë„ ì•„ë‹˜)
+            // ì´ëŸ° ê²½ìš° â†’ ìê¸° ëª¸ì„ ë°Ÿì•˜ë‹¤ê³  ë³´ê³  ì „ì²´ ë¦¬ì…‹
+            if (filledPoints.Count > 0)
+            {
+                ResetPath();
+            }
+        }
 
         startPos = endPos;
-
-        if (CheckWin())
-        {
-            hasGameFinished = true;
-            StartCoroutine(GameFinished());
-        }
     }
 
-    // ================== ±âº» À¯Æ¿ ==================
+    // ================== ê¸°ë³¸ ìœ í‹¸ ==================
 
     private bool IsValid(Vector2Int pos)
     {
@@ -183,7 +232,7 @@ public class GameManager : MonoBehaviour
         return dx + dy == 1;
     }
 
-    // ================== °æ·Î °ü¸® ==================
+    // ================== ê²½ë¡œ ê´€ë¦¬ ==================
 
     private bool AddEmpty()
     {
@@ -193,7 +242,7 @@ public class GameManager : MonoBehaviour
         if (target.Blocked) return false;
         if (filledPoints.Contains(endPos)) return false;
 
-        target.Add();                 // »ö¸¸ FilledColor·Î º¯°æ
+        target.Add();                 // ìƒ‰ë§Œ FilledColorë¡œ ë³€ê²½
         filledPoints.Add(endPos);
         return true;
     }
@@ -202,11 +251,11 @@ public class GameManager : MonoBehaviour
     {
         if (filledPoints.Count == 0) return false;
 
-        // ¸¶Áö¸· Ä­ÀÌ endPosÀÏ ¶§¸¸ Áö¿ò (µÚ·Î µå·¡±×ÇÑ °æ¿ì)
+        // ë§ˆì§€ë§‰ ì¹¸ì´ endPosì¼ ë•Œë§Œ ì§€ì›€ (ë’¤ë¡œ ë“œë˜ê·¸í•œ ê²½ìš°)
         if (filledPoints[filledPoints.Count - 1] == endPos)
         {
             Vector2Int last = filledPoints[filledPoints.Count - 1];
-            cells[last.x, last.y].Remove();      // »öÀ» ´Ù½Ã EmptyColor·Î
+            cells[last.x, last.y].Remove();      // ìƒ‰ì„ ë‹¤ì‹œ EmptyColorë¡œ
             filledPoints.RemoveAt(filledPoints.Count - 1);
             return true;
         }
@@ -214,7 +263,7 @@ public class GameManager : MonoBehaviour
         return false;
     }
 
-    // ================== Edge (Á÷¼± ¸öÅë) ==================
+    // ================== Edge (ì§ì„  ëª¸í†µ) ==================
 
     private void CreateEdge()
     {
@@ -232,7 +281,7 @@ public class GameManager : MonoBehaviour
         if (_bodyStraightSprite != null)
             sr.sprite = _bodyStraightSprite;
 
-        // µÎ ¼¿ Áß¾Ó¿¡ À§Ä¡
+        // ë‘ ì…€ ì¤‘ì•™ì— ìœ„ì¹˜
         float midX = from.y * 0.5f + 0.5f + to.y * 0.5f;
         float midY = from.x * 0.5f + 0.5f + to.x * 0.5f;
         edge.position = new Vector3(midX, midY, 0f);
@@ -252,16 +301,16 @@ public class GameManager : MonoBehaviour
         Destroy(last.gameObject);
     }
 
-    // ================== ¼¿ À§ ÄÚ³Ê/Á÷¼±(¿À¹ö·¹ÀÌ) ==================
+    // ================== ì…€ ìœ„ ì½”ë„ˆ/ì§ì„ (ì˜¤ë²„ë ˆì´) ==================
 
     /// <summary>
-    /// filledPoints ±âÁØÀ¸·Î °¢ ¼¿ÀÇ pathRenderer¿¡
-    /// Á÷¼±/ÄÚ³Ê ½ºÇÁ¶óÀÌÆ®¸¦ ±×·ÁÁØ´Ù.
-    /// ±âº» Á¡/»ö(_cellRenderer)Àº °Çµå¸®Áö ¾Ê´Â´Ù.
+    /// filledPoints ê¸°ì¤€ìœ¼ë¡œ ê° ì…€ì˜ pathRendererì—
+    /// ì§ì„ /ì½”ë„ˆ ìŠ¤í”„ë¼ì´íŠ¸ë¥¼ ê·¸ë ¤ì¤€ë‹¤.
+    /// ê¸°ë³¸ ì /ìƒ‰(_cellRenderer)ì€ ê±´ë“œë¦¬ì§€ ì•ŠëŠ”ë‹¤.
     /// </summary>
     private void RefreshCellsPathVisual()
     {
-        // 1) ±âÁ¸ ¿À¹ö·¹ÀÌ ÃÊ±âÈ­
+        // 1) ê¸°ì¡´ ì˜¤ë²„ë ˆì´ ì´ˆê¸°í™”
         for (int r = 0; r < _level.Row; r++)
         {
             for (int c = 0; c < _level.Col; c++)
@@ -271,7 +320,7 @@ public class GameManager : MonoBehaviour
             }
         }
 
-        // 2) °æ·Î Áß "Áß°£ ¼¿"¸¸ °Ë»ç (¸Ó¸®/²¿¸® Á¦¿Ü)
+        // 2) ê²½ë¡œ ì¤‘ "ì¤‘ê°„ ì…€"ë§Œ ê²€ì‚¬ (ë¨¸ë¦¬/ê¼¬ë¦¬ ì œì™¸)
         for (int i = 0; i < filledPoints.Count; i++)
         {
             if (i == 0 || i == filledPoints.Count - 1)
@@ -286,40 +335,40 @@ public class GameManager : MonoBehaviour
             Vector2Int dirIn = pos - prev;
             Vector2Int dirOut = next - pos;
 
-            // ¹æÇâÀÌ °°À¸¸é Á÷¼± ¡æ Edge°¡ ÀÌ¹Ì ÀÖÀ¸´Ï ¼¿Àº ¾Æ¹«°Íµµ ¾È ÇÔ
+            // ë°©í–¥ì´ ê°™ìœ¼ë©´ ì§ì„  â†’ Edgeê°€ ì´ë¯¸ ìˆìœ¼ë‹ˆ ì…€ì€ ì•„ë¬´ê²ƒë„ ì•ˆ í•¨
             if (dirIn == dirOut)
             {
-                // Á÷¼± ±¸°£: ÆĞ½º
+                // ì§ì„  êµ¬ê°„: íŒ¨ìŠ¤
                 continue;
             }
 
-            // ¹æÇâÀÌ ´Ù¸£¸é ÄÚ³Ê
+            // ë°©í–¥ì´ ë‹¤ë¥´ë©´ ì½”ë„ˆ
             float angle = GetCellCornerAngle(dirIn, dirOut);
             cell.SetCornerVisual(angle);
         }
     }
 
     /// <summary>
-    /// ÄÚ³Ê ¼¿¿¡ »ç¿ëÇÒ È¸Àü °è»ê.
-    /// ÄÚ³Ê ½ºÇÁ¶óÀÌÆ® ±âº»ÀÌ
-    /// "À§(DIR_UP)¿¡¼­ ¿Í¼­ ¿À¸¥ÂÊ(DIR_RIGHT)À¸·Î ²ªÀÌ´Â ¤¡" ¸ğ¾çÀÌ 0µµ¶ó°í °¡Á¤.
+    /// ì½”ë„ˆ ì…€ì— ì‚¬ìš©í•  íšŒì „ ê³„ì‚°.
+    /// ì½”ë„ˆ ìŠ¤í”„ë¼ì´íŠ¸ ê¸°ë³¸ì´
+    /// "ìœ„(DIR_UP)ì—ì„œ ì™€ì„œ ì˜¤ë¥¸ìª½(DIR_RIGHT)ìœ¼ë¡œ êº¾ì´ëŠ” ã„±" ëª¨ì–‘ì´ 0ë„ë¼ê³  ê°€ì •.
     /// </summary>
     private float GetCellCornerAngle(Vector2Int inDir, Vector2Int outDir)
     {
-        if (inDir == DIR_UP && outDir == DIR_RIGHT) return 0f;   // ¢Ö
-        if (inDir == DIR_RIGHT && outDir == DIR_DOWN) return 270f; // ¢Ù
-        if (inDir == DIR_DOWN && outDir == DIR_LEFT) return 180f;// ¢×
-        if (inDir == DIR_LEFT && outDir == DIR_UP) return 90f;// ¢Ø
+        if (inDir == DIR_UP && outDir == DIR_RIGHT) return 0f;   // â†—
+        if (inDir == DIR_RIGHT && outDir == DIR_DOWN) return 270f; // â†˜
+        if (inDir == DIR_DOWN && outDir == DIR_LEFT) return 180f;// â†™
+        if (inDir == DIR_LEFT && outDir == DIR_UP) return 90f;// â†–
 
-        // [2] ¹İ´ë ¼ø¼­(¿À¸ñ ÂÊÀ¸·Î ²ªÀÌ´Â °æ¿ì)´Â À§ °¢µµ¿¡¼­ 180¡Æ ¹İÀü
-        if (inDir == DIR_RIGHT && outDir == DIR_UP) return 180f; // ¢Ö ¹İ´ë
-        if (inDir == DIR_DOWN && outDir == DIR_RIGHT) return 90f; // ¢Ù ¹İ´ë
-        if (inDir == DIR_LEFT && outDir == DIR_DOWN) return 0f;   // ¢× ¹İ´ë
-        if (inDir == DIR_UP && outDir == DIR_LEFT) return 270f;  // ¢Ø ¹İ´ë
+        // [2] ë°˜ëŒ€ ìˆœì„œ(ì˜¤ëª© ìª½ìœ¼ë¡œ êº¾ì´ëŠ” ê²½ìš°)ëŠ” ìœ„ ê°ë„ì—ì„œ 180Â° ë°˜ì „
+        if (inDir == DIR_RIGHT && outDir == DIR_UP) return 180f; // â†— ë°˜ëŒ€
+        if (inDir == DIR_DOWN && outDir == DIR_RIGHT) return 90f; // â†˜ ë°˜ëŒ€
+        if (inDir == DIR_LEFT && outDir == DIR_DOWN) return 0f;   // â†™ ë°˜ëŒ€
+        if (inDir == DIR_UP && outDir == DIR_LEFT) return 270f;  // â†– ë°˜ëŒ€
         return 0f;
     }
 
-    // ================== ¸Ó¸® / ²¿¸® ==================
+    // ================== ë¨¸ë¦¬ / ê¼¬ë¦¬ ==================
 
     private void UpdateHeadTail()
     {
@@ -341,12 +390,12 @@ public class GameManager : MonoBehaviour
 
         if (filledPoints.Count >= 2)
         {
-            // ²¿¸® ¹æÇâ: µÎ ¹øÂ° Ä­ ÂÊÀ» ¹Ù¶óº½
+            // ê¼¬ë¦¬ ë°©í–¥: ë‘ ë²ˆì§¸ ì¹¸ ìª½ì„ ë°”ë¼ë´„
             Vector2Int next = filledPoints[1];
             Vector2Int dirTail = next - tail;
             _tailObj.transform.rotation = Quaternion.Euler(0f, 0f, TailDirToAngle(dirTail));
 
-            // ¸Ó¸® ¹æÇâ: ¸¶Áö¸·-1 Ä­¿¡¼­ ¸¶Áö¸· Ä­ ¹æÇâ
+            // ë¨¸ë¦¬ ë°©í–¥: ë§ˆì§€ë§‰-1 ì¹¸ì—ì„œ ë§ˆì§€ë§‰ ì¹¸ ë°©í–¥
             Vector2Int prev = filledPoints[filledPoints.Count - 2];
             Vector2Int dirHead = head - prev;
             _headObj.transform.rotation = Quaternion.Euler(0f, 0f, HeadDirToAngle(dirHead));
@@ -359,7 +408,7 @@ public class GameManager : MonoBehaviour
 
     private float HeadDirToAngle(Vector2Int dir)
     {
-        // ¸Ó¸® sprite ±âº» ¹æÇâ: ¿À¸¥ÂÊ(¡æ) °¡Á¤
+        // ë¨¸ë¦¬ sprite ê¸°ë³¸ ë°©í–¥: ì˜¤ë¥¸ìª½(â†’) ê°€ì •
         if (dir == DIR_RIGHT) return 0f;
         if (dir == DIR_UP) return 90f;
         if (dir == DIR_LEFT) return 180f;
@@ -369,7 +418,7 @@ public class GameManager : MonoBehaviour
 
     private float TailDirToAngle(Vector2Int dir)
     {
-        // ²¿¸® sprite ±âº» ¹æÇâ: À§(¡è) °¡Á¤ (ÇÊ¿äÇÏ¸é ¼ıÀÚ¸¸ Æ©´×)
+        // ê¼¬ë¦¬ sprite ê¸°ë³¸ ë°©í–¥: ìœ„(â†‘) ê°€ì • (í•„ìš”í•˜ë©´ ìˆ«ìë§Œ íŠœë‹)
         if (dir == DIR_UP) return 90f;
         if (dir == DIR_RIGHT) return 0f;
         if (dir == DIR_DOWN) return -90f;
@@ -377,7 +426,36 @@ public class GameManager : MonoBehaviour
         return 0f;
     }
 
-    // ================== Å¬¸®¾î & Àç½ÃÀÛ ==================
+    // ================== í´ë¦¬ì–´ & ì¬ì‹œì‘ ==================
+
+    // === í˜„ì¬ ê·¸ë ¤ì§„ ê²½ë¡œ ì „ë¶€ ë¦¬ì…‹ ===
+    private void ResetPath()
+    {
+        // 1) ì±„ì›Œì§„ ì…€ë“¤ ë¹„ìš°ê¸°
+        if (filledPoints != null)
+        {
+            foreach (var pos in filledPoints)
+            {
+                cells[pos.x, pos.y].Remove();  // ìƒ‰ì„ ë‹¤ì‹œ Emptyë¡œ
+            }
+            filledPoints.Clear();
+        }
+
+        // 2) Edge(ëª¸í†µ) ì „ë¶€ ì‚­ì œ
+        if (edges != null)
+        {
+            foreach (var edge in edges)
+            {
+                if (edge != null)
+                    Destroy(edge.gameObject);
+            }
+            edges.Clear();
+        }
+
+        // 3) ë¨¸ë¦¬/ê¼¬ë¦¬ ìˆ¨ê¸°ê¸° & ì…€ ë¹„ì£¼ì–¼ ì •ë¦¬
+        UpdateHeadTail();
+        RefreshCellsPathVisual();
+    }
 
     private bool CheckWin()
     {
@@ -391,7 +469,25 @@ public class GameManager : MonoBehaviour
 
     private IEnumerator GameFinished()
     {
-        yield return new WaitForSeconds(1f);
-        SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+        yield return new WaitForSeconds(0.3f);
+
+        if (_gameplayUI != null)
+            _gameplayUI.ShowStageClear(StageManager.SelectedStageIndex);
+    }
+
+    // ğŸ”½ ì—¬ê¸°ì— ì¶”ê°€í•˜ë©´ OK
+    public void LoadNextStageOrMenu()
+    {
+        int currentStage = StageManager.SelectedStageIndex;
+
+        if (_levels != null && _levels.Length > 0 && currentStage < _levels.Length - 1)
+        {
+            StageManager.SelectedStageIndex = currentStage + 1;
+            SceneManager.LoadScene("Gameplay");
+        }
+        else
+        {
+            SceneManager.LoadScene("MainMenu");
+        }
     }
 }
