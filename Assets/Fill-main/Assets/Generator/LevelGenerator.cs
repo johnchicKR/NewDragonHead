@@ -18,6 +18,15 @@ public class LevelGenerator : MonoBehaviour
     [SerializeField] private Cell _cellPrefab;
     [SerializeField] private Transform _edgePrefab;
 
+    [Header("Brush")]
+    [SerializeField] private TileType _currentBrush = TileType.Block;
+    // CustomEditor에서 쓰려고 프로퍼티도 하나 열어두기
+    public TileType CurrentBrush
+    {
+        get => _currentBrush;
+        set => _currentBrush = value;
+    }
+
     // --- Runtime state ---
     private Cell[,] cells;
     private List<Vector2Int> filledPoints;
@@ -113,16 +122,16 @@ public class LevelGenerator : MonoBehaviour
             startPos = new Vector2Int(Mathf.FloorToInt(mousePos.y), Mathf.FloorToInt(mousePos.x));
             if (!IsValid(startPos)) return;
 
-            bool wasBlocked = cells[startPos.x, startPos.y].Blocked;
-            bool wasFilled = cells[startPos.x, startPos.y].Filled;
-            if (!wasBlocked && wasFilled) return;  // 기존 제약 유지
+            var cell = cells[startPos.x, startPos.y];
+            if (cell == null) return;
 
-            cells[startPos.x, startPos.y].ChangeState(); // 내부에서 Blocked 토글
+            // ✅ 브러시 타입으로 셀 타입 설정
+            cell.SetType(_currentBrush);
 
+            // ✅ Level.Data에 (int)TileType 코드 저장
             if (_level != null && _level.Data != null && _level.Data.Count == _row * _col)
             {
-                // 토글 결과 반영 (wasBlocked의 반대가 현재 상태)
-                _level.Data[startPos.x * _col + startPos.y] = wasBlocked ? 0 : 1;
+                _level.Data[startPos.x * _col + startPos.y] = (int)_currentBrush;
 #if UNITY_EDITOR
                 EditorUtility.SetDirty(_level);
 #endif
@@ -403,9 +412,15 @@ public class LevelGenerator : MonoBehaviour
                 var cell = generator.GetCell(gridPos);
                 if (cell != null)
                 {
-                    Undo.RecordObject(cell, "Toggle Cell");
-                    cell.ChangeState();
-                    generator.UpdateLevelData(gridPos, cell.Blocked ? 1 : 0);
+                    Undo.RecordObject(cell, "Paint Cell");
+
+                    // ✅ 현재 브러시 타입으로 셀 설정
+                    TileType brush = generator.CurrentBrush;
+                    cell.SetType(brush);
+
+                    // ✅ Level.Data에 (int)TileType 코드 저장
+                    generator.UpdateLevelData(gridPos, (int)brush);
+
                     EditorUtility.SetDirty(cell);
                     if (generator.LevelAsset != null) EditorUtility.SetDirty(generator.LevelAsset);
                 }
@@ -422,7 +437,7 @@ public class LevelGenerator : MonoBehaviour
         return cells[pos.x, pos.y];
     }
 
-    public void UpdateLevelData(Vector2Int pos, int value)
+    public void UpdateLevelData(Vector2Int pos, int value)  // value = (int)TileType
     {
         if (_level == null) return;
         if (!IsValid(pos)) return;
@@ -441,8 +456,16 @@ public class LevelGenerator : MonoBehaviour
     {
         var list = new List<int>(_row * _col);
         for (int r = 0; r < _row; r++)
+        {
             for (int c = 0; c < _col; c++)
-                list.Add(cells[r, c] != null && cells[r, c].Blocked ? 1 : 0);
+            {
+                var cell = cells[r, c];
+                if (cell != null)
+                    list.Add((int)cell.Type);   // ✅ 현재 타일 타입 코드 저장
+                else
+                    list.Add((int)TileType.Empty);
+            }
+        }
         return list;
     }
 

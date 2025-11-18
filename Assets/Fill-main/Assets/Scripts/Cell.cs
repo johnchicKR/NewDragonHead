@@ -1,30 +1,87 @@
-using UnityEngine;
+ï»¿using UnityEngine;
 
 public class Cell : MonoBehaviour
 {
     [HideInInspector] public bool Blocked;
     [HideInInspector] public bool Filled;
 
-    [Header("Base (Á¡/»ö)")]
+    [Header("Base (ì /ìƒ‰)")]
     [SerializeField] private Color _blockedColor = new Color(0.15f, 0.15f, 0.15f, 1f);
     [SerializeField] private Color _emptyColor = Color.white;
     [SerializeField] private Color _filledColor = new Color(0.2f, 0.9f, 0.2f, 1f);
-    [SerializeField] private SpriteRenderer _cellRenderer; // ÇÑ °³Â¥¸® ¿ø ½ºÇÁ¶óÀÌÆ®
+    [SerializeField] private SpriteRenderer _cellRenderer; // í•œ ê°œì§œë¦¬ ì› ìŠ¤í”„ë¼ì´íŠ¸
 
     [Header("Dragon Path (Optional)")]
-    [SerializeField] private SpriteRenderer _pathRenderer;     // ¿ë ¸öÅë/ÄÚ³Ê Àü¿ë ·¹ÀÌ¾î (ÀÚ½Ä ¿ÀºêÁ§Æ®)
-    [SerializeField] private Sprite _pathStraightSprite;       // Á÷¼± ¸öÅë ½ºÇÁ¶óÀÌÆ®
-    [SerializeField] private Sprite _pathCornerSprite;         // ÄÚ³Ê ½ºÇÁ¶óÀÌÆ®
+    [SerializeField] private SpriteRenderer _pathRenderer;     // ìš© ëª¸í†µ/ì½”ë„ˆ ì „ìš© ë ˆì´ì–´ (ìì‹ ì˜¤ë¸Œì íŠ¸)
+    [SerializeField] private Sprite _pathStraightSprite;       // ì§ì„  ëª¸í†µ ìŠ¤í”„ë¼ì´íŠ¸
+    [SerializeField] private Sprite _pathCornerSprite;         // ì½”ë„ˆ ìŠ¤í”„ë¼ì´íŠ¸
 
-    
-    
+    public TileType Type { get; private set; }
 
-    public void Init(int fill)
+    public void SetType(TileType newType)
     {
-        Blocked = (fill == 1);
+        // Init ë¡œì§ì„ ê·¸ëŒ€ë¡œ ì¬ì‚¬ìš©í•˜ë©´ í¸í•¨
+        Init(newType);
+    }
+
+    // ğŸ”¹ 1. intë¥¼ ë°›ëŠ” Init (ê¸°ì¡´ ì½”ë“œ í˜¸í™˜ìš©)
+    public void Init(int code)
+    {
+        TileType type = (TileType)code;   // int â†’ TileType ìºìŠ¤íŒ…
+        Init(type);                       // ì•„ë˜ ì‹¤ì œ ë¡œì§ í˜¸ì¶œ
+    }
+
+    public void Init(TileType type)
+    {
+        Type = type;
         Filled = false;
 
-        _cellRenderer.color = Blocked ? _blockedColor : _emptyColor;
+        // ê¸°ë³¸ Block íŒì •: ì¼ë‹¨ì€ ë²½ë§Œ ë§‰íˆë„ë¡, ë‚˜ì¤‘ì— Lock/Toggle ë„ í¬í•¨ ê°€ëŠ¥
+        Blocked = (Type == TileType.Block);
+
+        // íƒ€ì…ì— ë”°ë¼ ê¸°ë³¸ ìƒ‰ìƒ ì„¤ì • (ì„ì‹œ: ë‚˜ì¤‘ì— ìŠ¤í”„ë¼ì´íŠ¸ë¡œ ë°”ê¿€ ìˆ˜ ìˆìŒ)
+        switch (Type)
+        {
+            case TileType.Empty:
+                _cellRenderer.color = _emptyColor;
+                break;
+
+            case TileType.Block:
+                _cellRenderer.color = _blockedColor;
+                break;
+
+            case TileType.Key:
+                _cellRenderer.color = Color.yellow;
+                break;
+
+            case TileType.Lock:
+                _cellRenderer.color = Color.cyan;
+                break;
+
+            case TileType.ArrowUp:
+            case TileType.ArrowRight:
+            case TileType.ArrowDown:
+            case TileType.ArrowLeft:
+                _cellRenderer.color = Color.magenta;
+                break;
+
+            case TileType.Poison:
+                _cellRenderer.color = Color.green;
+                break;
+
+            case TileType.SwitchA:
+                _cellRenderer.color = new Color(1f, 0.6f, 0.2f);
+                break;
+
+            case TileType.ToggleA:
+                _cellRenderer.color = new Color(0.8f, 0.3f, 0.3f);
+                break;
+
+            case TileType.PortalA1:
+            case TileType.PortalA2:
+                _cellRenderer.color = Color.blue;
+                break;
+        }
 
         ClearPathVisual();
     }
@@ -33,19 +90,19 @@ public class Cell : MonoBehaviour
     {
         Filled = true;
         _cellRenderer.color = _filledColor;
-        // Path ºñÁÖ¾óÀº GameManager¿¡¼­ µû·Î °»½ÅÇÏ¹Ç·Î ¿©±â¼± °ÇµéÁö ¾Ê´Â´Ù.
+        // Path ë¹„ì£¼ì–¼ì€ GameManagerì—ì„œ ë”°ë¡œ ê°±ì‹ í•˜ë¯€ë¡œ ì—¬ê¸°ì„  ê±´ë“¤ì§€ ì•ŠëŠ”ë‹¤.
     }
 
     public void Remove()
     {
         Filled = false;
         _cellRenderer.color = _emptyColor;
-        // Path ºñÁÖ¾óÀº GameManager°¡ RefreshCellsPathVisual¿¡¼­ ´Ù½Ã °è»ê
+        // Path ë¹„ì£¼ì–¼ì€ GameManagerê°€ RefreshCellsPathVisualì—ì„œ ë‹¤ì‹œ ê³„ì‚°
     }
 
     public void ChangeState()
     {
-        // ¿¡µğÅÍ¿¡¼­ Blocked Åä±Û¿ë (LevelGenerator)
+        // ì—ë””í„°ì—ì„œ Blocked í† ê¸€ìš© (LevelGenerator)
         Blocked = !Blocked;
         Filled = Blocked;
 
@@ -54,7 +111,7 @@ public class Cell : MonoBehaviour
         ClearPathVisual();
     }
 
-    // ===== ¿ë °æ·Î ºñÁÖ¾ó =====
+    // ===== ìš© ê²½ë¡œ ë¹„ì£¼ì–¼ =====
 
     public void ClearPathVisual()
     {
@@ -66,13 +123,13 @@ public class Cell : MonoBehaviour
         _pathRenderer.transform.localScale = Vector3.one;
     }
 
-    // Á÷¼± ¸öÅë (Ä­ Áß¾Ó¿¡, °¡·Î/¼¼·Î¸¸ È¸Àü)
+    // ì§ì„  ëª¸í†µ (ì¹¸ ì¤‘ì•™ì—, ê°€ë¡œ/ì„¸ë¡œë§Œ íšŒì „)
     public void SetStraightVisual(bool horizontal)
     {
-        // ÀÏºÎ·¯ ºñ¿öµÒ
+        // ì¼ë¶€ëŸ¬ ë¹„ì›Œë‘ 
     }
 
-    // ÄÚ³Ê ¸öÅë (¤¡ ¸ğ¾ç, °¢µµ¸¸ ³Ñ°Ü¹ŞÀ½)
+    // ì½”ë„ˆ ëª¸í†µ (ã„± ëª¨ì–‘, ê°ë„ë§Œ ë„˜ê²¨ë°›ìŒ)
     public void SetCornerVisual(float angle)
     {
         if (_pathRenderer == null || _pathCornerSprite == null) return;

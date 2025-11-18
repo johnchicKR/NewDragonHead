@@ -84,8 +84,11 @@ public class GameManager : MonoBehaviour
             for (int c = 0; c < _level.Col; c++)
             {
                 Cell cell = Instantiate(_cellPrefab);
-                int data = _level.Data[r * _level.Col + c]; // 0/1
-                cell.Init(data);                           // 여기서 색만 설정
+
+                int code = _level.Data[r * _level.Col + c];   // 저장된 int 코드
+                TileType type = (TileType)code;               // enum으로 캐스팅
+                cell.Init(type);
+
                 cell.transform.position = new Vector3(c + 0.5f, r + 0.5f, 0f);
                 cells[r, c] = cell;
             }
