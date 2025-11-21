@@ -430,6 +430,50 @@ public class LevelGenerator : MonoBehaviour
         }
     }
 
+    [ContextMenu("Full Reset (Delete All and Respawn Empty Grid)")]
+    public void FullReset()
+    {
+        Debug.Log("🔥 Full Reset 실행");
+
+        // 1) 모든 기존 Cell 게임오브젝트 삭제
+        List<GameObject> toDelete = new List<GameObject>();
+        foreach (Transform child in transform)
+        {
+            if (child.GetComponent<Cell>() != null)
+                toDelete.Add(child.gameObject);
+        }
+
+        foreach (var obj in toDelete)
+            DestroyImmediate(obj);
+
+        // 2) Level 데이터 초기화
+        if (_level != null)
+        {
+            _level.Data = new List<int>(_row * _col);
+            for (int i = 0; i < _row * _col; i++)
+                _level.Data.Add((int)TileType.Empty);
+
+            EditorUtility.SetDirty(_level);
+        }
+
+        // 3) 셀 배열 다시 생성
+        cells = new Cell[_row, _col];
+
+        // 4) 새로 Empty 셀들 respawn
+        for (int r = 0; r < _row; r++)
+        {
+            for (int c = 0; c < _col; c++)
+            {
+                var cell = PrefabUtility.InstantiatePrefab(_cellPrefab, transform) as Cell;
+                cell.Init(TileType.Empty);
+                cell.transform.position = new Vector3(c + 0.5f, r + 0.5f, 0f);
+                cells[r, c] = cell;
+            }
+        }
+
+        Debug.Log("🧹 Full Reset 완료! 모든 셀이 Empty로 재생성되었습니다.");
+    }
+
     // Editor에서 쓰는 Helper
     public Cell GetCell(Vector2Int pos)
     {

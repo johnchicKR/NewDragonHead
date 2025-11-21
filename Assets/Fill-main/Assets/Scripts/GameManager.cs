@@ -38,6 +38,8 @@ public class GameManager : MonoBehaviour
     private GameObject _headObj;
     private GameObject _tailObj;
 
+    private List<Cell> _lockCells = new List<Cell>();  // 아직 닫힌 문들
+
     private void Awake()
     {
         Instance = this;
@@ -91,6 +93,12 @@ public class GameManager : MonoBehaviour
 
                 cell.transform.position = new Vector3(c + 0.5f, r + 0.5f, 0f);
                 cells[r, c] = cell;
+
+                // 🔒 Lock이면 리스트에 저장
+                if (type == TileType.Lock)
+                {
+                    _lockCells.Add(cell);
+                }
             }
         }
     }
@@ -101,14 +109,14 @@ public class GameManager : MonoBehaviour
         _headObj = new GameObject("DragonHead");
         var headSr = _headObj.AddComponent<SpriteRenderer>();
         headSr.sprite = _headSprite;
-        headSr.sortingOrder = 30;
+        headSr.sortingOrder = 100;
         _headObj.SetActive(false);
 
         // 꼬리 오브젝트
         _tailObj = new GameObject("DragonTail");
         var tailSr = _tailObj.AddComponent<SpriteRenderer>();
         tailSr.sprite = _tailSprite;
-        tailSr.sortingOrder = 29;
+        tailSr.sortingOrder = 99;
         _tailObj.SetActive(false);
     }
 
@@ -242,11 +250,24 @@ public class GameManager : MonoBehaviour
         if (!IsValid(endPos)) return false;
 
         Cell target = cells[endPos.x, endPos.y];
+
+        // 🔒 아직 Lock 타입이면 그냥 막기 (열린 문은 Empty 타입으로 바뀜)
+        if (target.Type == TileType.Lock)
+            return false;
+
         if (target.Blocked) return false;
         if (filledPoints.Contains(endPos)) return false;
 
+        bool wasKey = (target.Type == TileType.Key);  // 🔑 키인지 먼저 기억
+
         target.Add();                 // 색만 FilledColor로 변경
         filledPoints.Add(endPos);
+
+        if (wasKey)
+        {
+            OnKeyCollected(target);   // 키였으면 문 하나 열기 + 키 아이콘 제거
+        }
+
         return true;
     }
 
@@ -292,7 +313,7 @@ public class GameManager : MonoBehaviour
         bool horizontal = (dir == DIR_RIGHT || dir == DIR_LEFT);
         edge.rotation = Quaternion.Euler(0f, 0f, horizontal ? 90f : 0f);
 
-        sr.sortingOrder = 20;
+        sr.sortingOrder = 60;
     }
 
     private void RemoveEdge()
@@ -493,4 +514,27 @@ public class GameManager : MonoBehaviour
             SceneManager.LoadScene("MainMenu");
         }
     }
+
+    private void OnKeyCollected(Cell keyCell)
+    {
+        // 1) 키 셀에서 아이콘 지우고 Empty로
+        keyCell.ConsumeKey();
+
+        // 2) 아직 닫힌 문이 없으면 여기서 끝
+        if (_lockCells.Count == 0)
+        {
+            Debug.Log("🔑 키를 먹었지만 더 이상 열릴 문이 없습니다.");
+            return;
+        }
+
+        // 3) 리스트에서 하나 꺼내서 그 문만 열기
+        Cell targetLock = _lockCells[0];
+        _lockCells.RemoveAt(0);
+
+        // 이제 이 문을 통과 가능한 빈 칸으로 변경
+        targetLock.SetType(TileType.Empty);
+
+        Debug.Log("🔑 키 1개로 Lock 1개 해제!");
+    }
+
 }

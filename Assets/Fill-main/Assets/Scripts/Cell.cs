@@ -11,6 +11,19 @@ public class Cell : MonoBehaviour
     [SerializeField] private Color _filledColor = new Color(0.2f, 0.9f, 0.2f, 1f);
     [SerializeField] private SpriteRenderer _cellRenderer; // 한 개짜리 원 스프라이트
 
+    [Header("Icon (타입별 아이콘)")]
+    [SerializeField] private SpriteRenderer _iconRenderer;   // 자식 Icon의 SR
+
+    [SerializeField] private Sprite _emptySprite;
+    [SerializeField] private Sprite _blockSprite;
+    [SerializeField] private Sprite _keySprite;
+    [SerializeField] private Sprite _lockSprite;
+    [SerializeField] private Sprite _arrowSprite;   // 기본 위쪽 화살표 하나만 써도 됨
+    [SerializeField] private Sprite _poisonSprite;
+    [SerializeField] private Sprite _switchASprite;
+    [SerializeField] private Sprite _toggleASprite;
+    [SerializeField] private Sprite _portalSprite;
+
     [Header("Dragon Path (Optional)")]
     [SerializeField] private SpriteRenderer _pathRenderer;     // 용 몸통/코너 전용 레이어 (자식 오브젝트)
     [SerializeField] private Sprite _pathStraightSprite;       // 직선 몸통 스프라이트
@@ -34,58 +47,137 @@ public class Cell : MonoBehaviour
     public void Init(TileType type)
     {
         Type = type;
-        Filled = false;
+        //Filled = false;
 
-        // 기본 Block 판정: 일단은 벽만 막히도록, 나중에 Lock/Toggle 도 포함 가능
-        Blocked = (Type == TileType.Block);
-
-        // 타입에 따라 기본 색상 설정 (임시: 나중에 스프라이트로 바꿀 수 있음)
         switch (Type)
         {
             case TileType.Empty:
+                Blocked = false;
                 _cellRenderer.color = _emptyColor;
                 break;
 
             case TileType.Block:
+                Blocked = true;
                 _cellRenderer.color = _blockedColor;
                 break;
 
+            case TileType.Lock:
+                Blocked = true;                 // 🔒 기본적으로 못 지나가는 칸
+                _cellRenderer.color = _blockedColor;
+                break;
+
+            default:
+                Blocked = false;
+                _cellRenderer.color = _emptyColor;
+                break;
+        }
+
+        UpdateVisualByType();
+
+        ClearPathVisual();
+    }
+
+    private void UpdateVisualByType()
+    {
+        // 1) 기본 배경 색 / 점 색
+        switch (Type)
+        {
+            case TileType.Empty:
+                Blocked = false;
+                _cellRenderer.color = _emptyColor;
+                break;
+
+            case TileType.Block:
+                Blocked = true;
+                _cellRenderer.color = _blockedColor;
+                break;
+
+            default:
+                // 기믹 타일은 기본적으로 지나갈 수 있는 칸(필요하면 바꿀 수 있음)
+                Blocked = false;
+                _cellRenderer.color = _emptyColor;
+                break;
+        }
+
+        // 2) 아이콘 스프라이트 & 회전
+        if (_iconRenderer == null) return;
+
+        _iconRenderer.enabled = false;
+        _iconRenderer.sprite = null;
+        _iconRenderer.transform.localRotation = Quaternion.identity;
+
+        switch (Type)
+        {
+            case TileType.Empty:
+                if (_emptySprite != null)
+                {
+                    _iconRenderer.enabled = true;
+                    _iconRenderer.sprite = _emptySprite;
+                }
+                break;
+
+            case TileType.Block:
+                Blocked = true;
+                _cellRenderer.color = _blockedColor;
+
+                if (_blockSprite != null)
+                {
+                    _iconRenderer.enabled = true;
+                    _iconRenderer.sprite = _blockSprite;
+                }
+                break;
+
             case TileType.Key:
-                _cellRenderer.color = Color.yellow;
+                _iconRenderer.enabled = true;
+                _iconRenderer.sprite = _keySprite;
                 break;
 
             case TileType.Lock:
-                _cellRenderer.color = Color.cyan;
+                _iconRenderer.enabled = true;
+                _iconRenderer.sprite = _lockSprite;
                 break;
 
             case TileType.ArrowUp:
             case TileType.ArrowRight:
             case TileType.ArrowDown:
             case TileType.ArrowLeft:
-                _cellRenderer.color = Color.magenta;
+                if (_arrowSprite != null)
+                {
+                    _iconRenderer.enabled = true;
+                    _iconRenderer.sprite = _arrowSprite;
+
+                    float angle = 0f;
+                    if (Type == TileType.ArrowUp) angle = 0f;
+                    if (Type == TileType.ArrowRight) angle = -90f;
+                    if (Type == TileType.ArrowDown) angle = 180f;
+                    if (Type == TileType.ArrowLeft) angle = 90f;
+
+                    _iconRenderer.transform.localRotation = Quaternion.Euler(0, 0, angle);
+                }
                 break;
 
             case TileType.Poison:
-                _cellRenderer.color = Color.green;
+                _iconRenderer.enabled = true;
+                _iconRenderer.sprite = _poisonSprite;
                 break;
 
             case TileType.SwitchA:
-                _cellRenderer.color = new Color(1f, 0.6f, 0.2f);
+                _iconRenderer.enabled = true;
+                _iconRenderer.sprite = _switchASprite;
                 break;
 
             case TileType.ToggleA:
-                _cellRenderer.color = new Color(0.8f, 0.3f, 0.3f);
+                _iconRenderer.enabled = true;
+                _iconRenderer.sprite = _toggleASprite;
                 break;
 
             case TileType.PortalA1:
             case TileType.PortalA2:
-                _cellRenderer.color = Color.blue;
+                _iconRenderer.enabled = true;
+                _iconRenderer.sprite = _portalSprite;
                 break;
         }
-
-        ClearPathVisual();
     }
-
     public void Add()
     {
         Filled = true;
@@ -139,5 +231,15 @@ public class Cell : MonoBehaviour
         _pathRenderer.transform.localRotation = Quaternion.Euler(0f, 0f, angle);
 
         _pathRenderer.transform.localScale = Vector3.one;
+    }
+
+    public void ConsumeKey()
+    {
+        if (Type != TileType.Key) return;
+
+        // 이제 이 셀은 "열쇠 없는 일반 빈 칸"으로 취급
+        Type = TileType.Empty;
+        UpdateVisualByType();   // 아이콘/색깔 다시 적용 (Empty로)
+                                // Filled 값은 건드리지 않음 → 이미 지나간 칸 유지
     }
 }
