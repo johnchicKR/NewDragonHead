@@ -30,6 +30,7 @@ public class GameManager : MonoBehaviour
     [Header("Dragon Sprites")]
     [SerializeField] private Sprite _headSprite;
     [SerializeField] private Sprite _tailSprite;
+    [SerializeField] private Sprite _headOpenSprite; // ★ [New] 입 벌린 머리 스프라이트
     [SerializeField] private Sprite _bodyStraightSprite;  // Edge에 쓸 직선 스프라이트
 
     [Header("UI")]
@@ -180,6 +181,9 @@ public class GameManager : MonoBehaviour
             if (CheckWin())
             {
                 hasGameFinished = true;
+                // ★ [New] 승리 비주얼 연출 실행
+                ShowWinVisuals();
+
                 StartCoroutine(GameFinished());   // 여기서 클리어 패널 뜨는 코루틴
             }
             return;    // 이 프레임에서는 더 이상 처리 안 함
@@ -228,6 +232,18 @@ public class GameManager : MonoBehaviour
         startPos = endPos;
     }
 
+    private void ShowWinVisuals()
+    {
+        // 1. 머리 스프라이트 교체 (입 벌리기 앙!)
+        if (_headOpenSprite != null && _headObj != null)
+        {
+            var sr = _headObj.GetComponent<SpriteRenderer>();
+            sr.sprite = _headOpenSprite;
+        }
+
+    }
+
+    
     // ================== 기본 유틸 ==================
 
     private bool IsValid(Vector2Int pos)
