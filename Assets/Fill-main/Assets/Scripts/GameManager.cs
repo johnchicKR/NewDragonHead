@@ -9,7 +9,7 @@ public class GameManager : MonoBehaviour
 
     [Header("Level / Prefabs")]
     [SerializeField] private Level[] _levels;   // ★ 여러 스테이지 에셋 등록용
-    [SerializeField] private Level _level;     // ★ 실제로 사용할 현재 레벨
+    [SerializeField] private Level _level;      // ★ 실제로 사용할 현재 레벨
     [SerializeField] private Cell _cellPrefab;
     [SerializeField] private Transform _edgePrefab;   // 직선 몸통 프리팹
 
@@ -40,6 +40,7 @@ public class GameManager : MonoBehaviour
     private GameObject _tailObj;
 
     private List<Cell> _lockCells = new List<Cell>();  // 아직 닫힌 문들
+    private List<Cell> _toggleCells = new List<Cell>(); // ★ [New] 스위치로 껐다 켜는 벽들
 
     private void Awake()
     {
@@ -51,7 +52,6 @@ public class GameManager : MonoBehaviour
             // StageManager.SelectedStageIndex 를 기준으로 선택
             int idx = Mathf.Clamp(StageManager.SelectedStageIndex, 0, _levels.Length - 1);
             _level = _levels[idx];
-            //Debug.Log($"GameManager: StageIndex {idx} → Level '{_level.name}' 선택");
         }
 
         if (_level == null)
@@ -99,6 +99,12 @@ public class GameManager : MonoBehaviour
                 if (type == TileType.Lock)
                 {
                     _lockCells.Add(cell);
+                }
+
+                // ★ [추가] ToggleA이면 리스트에 저장
+                if (type == TileType.ToggleA)
+                {
+                    _toggleCells.Add(cell);
                 }
             }
         }
@@ -154,7 +160,17 @@ public class GameManager : MonoBehaviour
             // 머리 칸이 아닌 다른 칸에서 새로 드래그를 시작했다면 → "새로 시작"으로 판단하고 리셋
             if (startPos != head)
             {
-                ResetPath();
+                // ★ [수정] 무조건 리셋하지 말고, 포탈 연결인지 먼저 확인!
+                // "마지막 칸(Head)"과 "지금 누른 칸(StartPos)"이 포탈 쌍인가?
+                if (IsPortalPair(head, startPos))
+                {
+                    // 포탈 쌍이 맞다면 리셋 금지! (이어하기 모드)
+                }
+                else
+                {
+                    // 포탈도 아니고 엉뚱한 곳을 눌렀다면 리셋
+                    ResetPath();
+                }
             }
         }
 
@@ -162,6 +178,12 @@ public class GameManager : MonoBehaviour
         {
             UpdateHeadTail();
             RefreshCellsPathVisual(); // 코너/몸통 오버레이 갱신
+
+            // ★ [추가] 포탈을 타고 넘어왔다면, 몸통 생성 로직 호출
+            if (filledPoints.Count >= 2)
+            {
+                CreateEdge();
+            }
         }
     }
 
@@ -177,7 +199,7 @@ public class GameManager : MonoBehaviour
         // 1) 첫 출발칸(꼬리)로 되돌아온 경우 → 클리어 체크
         if (filledPoints.Count > 0 && endPos == filledPoints[0])
         {
-            // 여기서는 새 칸 추가 없이, 현재 경로 상태로 승리 조건만 검사
+            // 승리 조건 검사
             if (CheckWin())
             {
                 hasGameFinished = true;
@@ -200,6 +222,32 @@ public class GameManager : MonoBehaviour
             return;
         }
 
+        // ★ [수정] 되돌아가기(Undo)인지 먼저 체크!
+        if (filledPoints.Count >= 2 && endPos == filledPoints[filledPoints.Count - 2])
+        {
+            // 뒤로 갔다면 Undo 수행
+            if (RemoveFromEnd())
+            {
+                RemoveEdge();
+                UpdateHeadTail();
+                RefreshCellsPathVisual();
+            }
+            startPos = endPos;
+            return;
+        }
+
+        // ★ [추가] 앞으로 전진하려는데, 현재 밟고 있는 칸이 화살표라면?
+        if (filledPoints.Count > 0)
+        {
+            Vector2Int currentHead = filledPoints[filledPoints.Count - 1];
+
+            // 화살표 방향 위반 시 이동 불가 (함수 호출)
+            if (!IsMoveAllowedByArrow(currentHead, endPos))
+            {
+                return; // 그냥 무시 (리셋하지 않음)
+            }
+        }
+
         // 3) 정상 이웃칸으로 이동 시도
         bool movedForward = AddEmpty();
 
@@ -209,27 +257,10 @@ public class GameManager : MonoBehaviour
             CreateEdge();
             UpdateHeadTail();
             RefreshCellsPathVisual();
-        }
-        else if (RemoveFromEnd())
-        {
-            // 되돌아가기(Undo) 처리
-            RemoveEdge();
-            UpdateHeadTail();
-            RefreshCellsPathVisual();
-        }
-        else
-        {
-            // 이웃이긴 한데,
-            // - Blocked 칸이거나
-            // - 이미 지나간 몸통(되돌리기도 아님)
-            // 이런 경우 → 자기 몸을 밟았다고 보고 전체 리셋
-            if (filledPoints.Count > 0)
-            {
-                ResetPath();
-            }
+
+            startPos = endPos;
         }
 
-        startPos = endPos;
     }
 
     private void ShowWinVisuals()
@@ -240,10 +271,9 @@ public class GameManager : MonoBehaviour
             var sr = _headObj.GetComponent<SpriteRenderer>();
             sr.sprite = _headOpenSprite;
         }
-
     }
 
-    
+
     // ================== 기본 유틸 ==================
 
     private bool IsValid(Vector2Int pos)
@@ -254,9 +284,39 @@ public class GameManager : MonoBehaviour
 
     private bool IsNeighbour()
     {
+        // 1. 일반적인 거리 계산 (상하좌우 1칸)
         int dx = Mathf.Abs(startPos.x - endPos.x);
         int dy = Mathf.Abs(startPos.y - endPos.y);
-        return dx + dy == 1;
+
+        // ★ 수정: 바로 return하지 않고, 조건이 맞으면 true 반환
+        if (dx + dy == 1)
+        {
+            return true;
+        }
+
+        // 2. ★ [추가] 거리가 멀더라도, 두 칸이 '포탈 쌍'이라면 이웃으로 인정!
+        if (IsPortalPair(startPos, endPos))
+        {
+            return true;
+        }
+
+        // 둘 다 아니면 이동 불가
+        return false;
+    }
+
+    // 현재 위치(current)에서 다음 위치(next)로 가는 것이 화살표 규칙에 맞는지 검사
+    private bool IsMoveAllowedByArrow(Vector2Int current, Vector2Int next)
+    {
+        Cell currentCell = cells[current.x, current.y];
+        Vector2Int dir = next - current; // 이동하려는 방향
+
+        // 현재 밟고 있는 타일이 화살표라면, 방향을 강제함
+        if (currentCell.Type == TileType.ArrowUp && dir != DIR_UP) return false;
+        if (currentCell.Type == TileType.ArrowDown && dir != DIR_DOWN) return false;
+        if (currentCell.Type == TileType.ArrowRight && dir != DIR_RIGHT) return false;
+        if (currentCell.Type == TileType.ArrowLeft && dir != DIR_LEFT) return false;
+
+        return true; // 화살표가 아니거나, 방향이 맞으면 통과
     }
 
     // ================== 경로 관리 ==================
@@ -267,26 +327,31 @@ public class GameManager : MonoBehaviour
 
         Cell target = cells[endPos.x, endPos.y];
 
-        // 🔒 아직 Lock 타입이면 그냥 막기 (열린 문은 Empty 타입으로 바뀜)
+        // 🔒 아직 Lock 타입이면 그냥 막기
         if (target.Type == TileType.Lock)
             return false;
 
         if (target.Blocked) return false;
         if (filledPoints.Contains(endPos)) return false;
 
-        bool wasKey = (target.Type == TileType.Key);  // 🔑 키인지 먼저 기억
+        bool wasKey = (target.Type == TileType.Key);
+        bool isSwitch = (target.Type == TileType.SwitchA); // ★ [추가] 밟으려는 칸이 스위치인지 확인
 
         target.Add();                 // 색만 FilledColor로 변경
         filledPoints.Add(endPos);
 
         if (wasKey)
         {
-            OnKeyCollected(target);   // 키였으면 문 하나 열기 + 키 아이콘 제거
+            OnKeyCollected(target);   // 키였으면 문 하나 열기
         }
+
+        // ★ [추가] 스위치라면 토글 작동!
+        if (isSwitch) RunSwitchEffect();
 
         return true;
     }
 
+    // ★ [수정 완료] RemoveFromEnd 함수 수정됨 (target 선언 추가)
     private bool RemoveFromEnd()
     {
         if (filledPoints.Count == 0) return false;
@@ -295,7 +360,18 @@ public class GameManager : MonoBehaviour
         if (filledPoints[filledPoints.Count - 1] == endPos)
         {
             Vector2Int last = filledPoints[filledPoints.Count - 1];
-            cells[last.x, last.y].Remove();      // 색을 다시 EmptyColor로
+
+            // ★ [수정] 아래 한 줄이 빠져서 오류가 났던 것입니다! target 변수 선언.
+            Cell target = cells[last.x, last.y];
+
+            target.Remove();      // 색을 다시 EmptyColor로
+
+            // ★ [추가] 지워지는 칸이 스위치였다면? 다시 한 번 눌러서 원상복구!
+            if (target.Type == TileType.SwitchA)
+            {
+                RunSwitchEffect();
+            }
+
             filledPoints.RemoveAt(filledPoints.Count - 1);
             return true;
         }
@@ -312,6 +388,13 @@ public class GameManager : MonoBehaviour
 
         Vector2Int from = filledPoints[count - 2];
         Vector2Int to = filledPoints[count - 1];
+
+        // ★ [추가] 포탈을 타고 이동한 경우라면, 직선 몸통을 그리지 않고 종료
+        if (IsPortalPair(from, to))
+        {
+            return;
+        }
+
         Vector2Int dir = to - from;
 
         Transform edge = Instantiate(_edgePrefab);
@@ -343,11 +426,6 @@ public class GameManager : MonoBehaviour
 
     // ================== 셀 위 코너/직선(오버레이) ==================
 
-    /// <summary>
-    /// filledPoints 기준으로 각 셀의 pathRenderer에
-    /// 직선/코너 스프라이트를 그려준다.
-    /// 기본 점/색(_cellRenderer)은 건드리지 않는다.
-    /// </summary>
     private void RefreshCellsPathVisual()
     {
         // 1) 기존 오버레이 초기화
@@ -375,24 +453,13 @@ public class GameManager : MonoBehaviour
             Vector2Int dirIn = pos - prev;
             Vector2Int dirOut = next - pos;
 
-            // 방향이 같으면 직선 → Edge가 이미 있으니 셀은 아무것도 안 함
-            if (dirIn == dirOut)
-            {
-                // 직선 구간: 패스
-                continue;
-            }
+            if (dirIn == dirOut) continue;
 
-            // 방향이 다르면 코너
             float angle = GetCellCornerAngle(dirIn, dirOut);
             cell.SetCornerVisual(angle);
         }
     }
 
-    /// <summary>
-    /// 코너 셀에 사용할 회전 계산.
-    /// 코너 스프라이트 기본이
-    /// "위(DIR_UP)에서 와서 오른쪽(DIR_RIGHT)으로 꺾이는 ㄱ" 모양이 0도라고 가정.
-    /// </summary>
     private float GetCellCornerAngle(Vector2Int inDir, Vector2Int outDir)
     {
         if (inDir == DIR_UP && outDir == DIR_RIGHT) return 0f;   // ↗
@@ -400,7 +467,6 @@ public class GameManager : MonoBehaviour
         if (inDir == DIR_DOWN && outDir == DIR_LEFT) return 180f;// ↙
         if (inDir == DIR_LEFT && outDir == DIR_UP) return 90f;// ↖
 
-        // [2] 반대 순서(오목 쪽으로 꺾이는 경우)는 위 각도에서 180° 반전
         if (inDir == DIR_RIGHT && outDir == DIR_UP) return 180f; // ↗ 반대
         if (inDir == DIR_DOWN && outDir == DIR_RIGHT) return 90f; // ↘ 반대
         if (inDir == DIR_LEFT && outDir == DIR_DOWN) return 0f;   // ↙ 반대
@@ -430,12 +496,12 @@ public class GameManager : MonoBehaviour
 
         if (filledPoints.Count >= 2)
         {
-            // 꼬리 방향: 두 번째 칸 쪽을 바라봄
+            // 꼬리 방향
             Vector2Int next = filledPoints[1];
             Vector2Int dirTail = next - tail;
             _tailObj.transform.rotation = Quaternion.Euler(0f, 0f, TailDirToAngle(dirTail));
 
-            // 머리 방향: 마지막-1 칸에서 마지막 칸 방향
+            // 머리 방향
             Vector2Int prev = filledPoints[filledPoints.Count - 2];
             Vector2Int dirHead = head - prev;
             _headObj.transform.rotation = Quaternion.Euler(0f, 0f, HeadDirToAngle(dirHead));
@@ -448,7 +514,6 @@ public class GameManager : MonoBehaviour
 
     private float HeadDirToAngle(Vector2Int dir)
     {
-        // 머리 sprite 기본 방향: 오른쪽(→) 가정
         if (dir == DIR_RIGHT) return 0f;
         if (dir == DIR_UP) return 90f;
         if (dir == DIR_LEFT) return 180f;
@@ -458,7 +523,6 @@ public class GameManager : MonoBehaviour
 
     private float TailDirToAngle(Vector2Int dir)
     {
-        // 꼬리 sprite 기본 방향: 위(↑) 가정 (필요하면 숫자만 튜닝)
         if (dir == DIR_UP) return 90f;
         if (dir == DIR_RIGHT) return 0f;
         if (dir == DIR_DOWN) return -90f;
@@ -468,7 +532,6 @@ public class GameManager : MonoBehaviour
 
     // ================== 클리어 & 재시작 ==================
 
-    // === 현재 그려진 경로 전부 리셋 ===
     private void ResetPath()
     {
         // 1) 채워진 셀들 비우기
@@ -476,7 +539,7 @@ public class GameManager : MonoBehaviour
         {
             foreach (var pos in filledPoints)
             {
-                cells[pos.x, pos.y].Remove();  // 색을 다시 Empty로
+                cells[pos.x, pos.y].Remove();
             }
             filledPoints.Clear();
         }
@@ -486,13 +549,20 @@ public class GameManager : MonoBehaviour
         {
             foreach (var edge in edges)
             {
-                if (edge != null)
-                    Destroy(edge.gameObject);
+                if (edge != null) Destroy(edge.gameObject);
             }
             edges.Clear();
         }
 
-        // 3) 머리/꼬리 숨기기 & 셀 비주얼 정리
+        // 3. ★ [추가] 모든 토글 벽 상태 초기화 (원래대로 되돌리기)
+        if (_toggleCells != null)
+        {
+            foreach (Cell toggleCell in _toggleCells)
+            {
+                toggleCell.ResetToggleState();
+            }
+        }
+
         UpdateHeadTail();
         RefreshCellsPathVisual();
     }
@@ -515,7 +585,6 @@ public class GameManager : MonoBehaviour
             _gameplayUI.ShowStageClear(StageManager.SelectedStageIndex);
     }
 
-    // 🔽 여기에 추가하면 OK
     public void LoadNextStageOrMenu()
     {
         int currentStage = StageManager.SelectedStageIndex;
@@ -533,24 +602,42 @@ public class GameManager : MonoBehaviour
 
     private void OnKeyCollected(Cell keyCell)
     {
-        // 1) 키 셀에서 아이콘 지우고 Empty로
         keyCell.ConsumeKey();
 
-        // 2) 아직 닫힌 문이 없으면 여기서 끝
         if (_lockCells.Count == 0)
         {
             Debug.Log("🔑 키를 먹었지만 더 이상 열릴 문이 없습니다.");
             return;
         }
 
-        // 3) 리스트에서 하나 꺼내서 그 문만 열기
         Cell targetLock = _lockCells[0];
         _lockCells.RemoveAt(0);
-
-        // 이제 이 문을 통과 가능한 빈 칸으로 변경
         targetLock.SetType(TileType.Empty);
 
         Debug.Log("🔑 키 1개로 Lock 1개 해제!");
+    }
+
+    private bool IsPortalPair(Vector2Int posA, Vector2Int posB)
+    {
+        Cell cellA = cells[posA.x, posA.y];
+        Cell cellB = cells[posB.x, posB.y];
+
+        if ((cellA.Type == TileType.PortalA1 && cellB.Type == TileType.PortalA2) ||
+            (cellA.Type == TileType.PortalA2 && cellB.Type == TileType.PortalA1))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    private void RunSwitchEffect()
+    {
+        foreach (Cell cell in _toggleCells)
+        {
+            cell.ToggleState();
+        }
+        Debug.Log("🔘 스위치 작동! 벽들이 움직입니다.");
     }
 
 }

@@ -402,29 +402,50 @@ public class LevelGenerator : MonoBehaviour
         private void OnSceneGUIHandler(SceneView sceneView)
         {
             Event e = Event.current;
-            if (e.type == EventType.MouseDown && e.button == 0)
+
+            // 좌클릭이나 드래그할 때 실행
+            if ((e.type == EventType.MouseDown || e.type == EventType.MouseDrag) && e.button == 0)
             {
-                Vector3 world = HandleUtility.GUIPointToWorldRay(e.mousePosition).origin;
+                // 1. 마우스 위치에서 카메라가 보는 방향으로 레이저 발사
+                Ray ray = HandleUtility.GUIPointToWorldRay(e.mousePosition);
+
+                // 2. ★ 중요: Z=0 평면과의 교차점 계산 (평면 객체 없이 순수 수학으로 계산)
+                // 공식: t = (타겟Z - 레이저시작.z) / 레이저방향.z
+                // 우리는 타겟Z가 0이므로: t = -ray.origin.z / ray.direction.z
+                float t = -ray.origin.z / ray.direction.z;
+
+                // 3. 정확한 바닥 위치(World Position) 가져오기
+                Vector3 world = ray.GetPoint(t);
+
+                // 4. 좌표 계산 (FloorToInt가 가장 정확합니다)
+                // 셀은 0.5위치에 있지만, 0.0~1.0 범위를 0번 인덱스로 잡으려면 Floor가 맞습니다.
                 var gridPos = new Vector2Int(Mathf.FloorToInt(world.y), Mathf.FloorToInt(world.x));
 
-                if (!generator.IsValid(gridPos)) return;
-
-                var cell = generator.GetCell(gridPos);
-                if (cell != null)
+                // 5. 유효성 검사 및 칠하기
+                if (generator.IsValid(gridPos))
                 {
-                    Undo.RecordObject(cell, "Paint Cell");
+                    var cell = generator.GetCell(gridPos);
+                    if (cell != null)
+                    {
+                        // 실행 취소(Ctrl+Z) 지원을 위한 기록
+                        Undo.RecordObject(cell, "Paint Cell");
 
-                    // ✅ 현재 브러시 타입으로 셀 설정
-                    TileType brush = generator.CurrentBrush;
-                    cell.SetType(brush);
+                        // 브러시 적용
+                        TileType brush = generator.CurrentBrush;
 
-                    // ✅ Level.Data에 (int)TileType 코드 저장
-                    generator.UpdateLevelData(gridPos, (int)brush);
+                        // 이미 같은 타입이면 굳이 또 안 칠함 (최적화)
+                        if (cell.Type != brush)
+                        {
+                            cell.SetType(brush);
+                            generator.UpdateLevelData(gridPos, (int)brush);
 
-                    EditorUtility.SetDirty(cell);
-                    if (generator.LevelAsset != null) EditorUtility.SetDirty(generator.LevelAsset);
+                            EditorUtility.SetDirty(cell);
+                            if (generator.LevelAsset != null) EditorUtility.SetDirty(generator.LevelAsset);
+                        }
+                    }
                 }
 
+                // 이벤트를 여기서 썼으니 다른 놈(카메라 회전 등)은 건드리지 마라
                 e.Use();
             }
         }
@@ -477,8 +498,44 @@ public class LevelGenerator : MonoBehaviour
     // Editor에서 쓰는 Helper
     public Cell GetCell(Vector2Int pos)
     {
+        // 1. 유효 범위 체크
         if (!IsValid(pos)) return null;
+
+        // 2. ★ 중요: 기억상실(Null) 체크!
+        // 배열이 비어있다면, 화면에 있는 애들을 다시 찾아서 채워넣는다.
+        if (cells == null || cells.Length == 0)
+        {
+            RebuildGridReference();
+        }
+
+        // 3. 그래도 없으면 진짜 없는 것
+        if (cells == null) return null;
+
         return cells[pos.x, pos.y];
+    }
+
+    // 화면에 이미 있는 Cell들을 찾아서 배열에 다시 연결하는 함수
+    private void RebuildGridReference()
+    {
+        cells = new Cell[_row, _col];
+
+        // 내 자식으로 있는 모든 Cell을 찾는다
+        foreach (Transform child in transform)
+        {
+            Cell c = child.GetComponent<Cell>();
+            if (c != null)
+            {
+                // 위치를 기반으로 인덱스 역계산 (x=0.5 -> col=0)
+                int col = Mathf.FloorToInt(child.localPosition.x);
+                int row = Mathf.FloorToInt(child.localPosition.y);
+
+                // 범위 안에 있다면 배열에 연결
+                if (row >= 0 && row < _row && col >= 0 && col < _col)
+                {
+                    cells[row, col] = c;
+                }
+            }
+        }
     }
 
     public void UpdateLevelData(Vector2Int pos, int value)  // value = (int)TileType

@@ -206,8 +206,8 @@ MonoBehaviour:
   _toggleASprite: {fileID: 598226475451273053, guid: 15482a776972fec4dbdd6632dd57e0ec, type: 3}
   _portalSprite: {fileID: -5816642994671486895, guid: 7e706cc38d3c51e46ab041926bbe5d0e, type: 3}
   _pathRenderer: {fileID: 2352423919284287410}
-  _pathStraightSprite: {fileID: -1880120661550918566, guid: 7facc022a129e1346b5a51ff759109a2, type: 3}
-  _pathCornerSprite: {fileID: 21300000, guid: d1474c5fd3de3eb4c90c8e0c55c46b63, type: 3}
+  _pathStraightSprite: {fileID: 7687380470111918697, guid: a72684cafcdc11f4ea7f075b96a1a1f9, type: 3}
+  _pathCornerSprite: {fileID: -6107941164103837737, guid: fa3bd64173df7f1469bcf344d070eb57, type: 3}
 --- !u!1 &7353527573632325498
 GameObject:
   m_ObjectHideFlags: 0
